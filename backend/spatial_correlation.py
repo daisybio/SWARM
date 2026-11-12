@@ -433,19 +433,41 @@ def check_circularity_dependency(feat_a: Dict[str, Any], feat_b: Dict[str, Any])
     return False, "Independent cross-layer comparison"
 
 
-def compute_spatial_correlation_matrix(adata: sc.AnnData) -> Dict[str, Any]:
+def compute_spatial_correlation_matrix(adata: sc.AnnData, selected_genes=None) -> Dict[str, Any]:
     """
     Computes full pairwise spatial correlation summary matrices for all available features.
     Fully vectorized in NumPy / SciPy for sub-50ms performance.
     """
     features = extract_all_score_features(adata)
+
+    # Existing obs and score features
     feat_list = list(features.values())
+    vectors = [get_feature_vector(adata, f) for f in feat_list]
+
+    # Add selected genes on demand
+    for gene in dict.fromkeys(selected_genes or []):
+        # resolve_feature_or_dynamic does the (case-insensitive) gene lookup and raises a
+        # CorrelationError (gene_not_found / gene_ambiguous) that the route turns into a JSON error.
+        feature_id = f"gene_expression::{gene}"
+
+        gene_info, gene_vector = resolve_feature_or_dynamic(
+            adata,
+            feature_id,
+            features
+        )
+
+        feat_list.append(gene_info)
+        vectors.append(gene_vector)
+
     n_feats = len(feat_list)
 
     if n_feats == 0:
-        return {"features": [], "pearson_matrix": [], "moran_matrix": [], "circularity_matrix": []}
-
-    vectors = [get_feature_vector(adata, f) for f in feat_list]
+        return {
+            "features": [],
+            "pearson_matrix": [],
+            "moran_matrix": [],
+            "circularity_matrix": []
+        }
     W = build_spatial_weight_matrix(adata)
     n_obs = adata.n_obs
 
