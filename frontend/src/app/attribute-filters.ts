@@ -142,3 +142,14 @@ export function isUninformativeAttribute(key: string, features: CellFeature[] | 
 
   return false;
 }
+
+/** True for values a table sort must ignore: null/undefined, NaN, empty and "nan"/"null"/"none"/"n/a" strings. */
+export function isMissingValue(v: unknown): boolean {
+  if (v === null || v === undefined) return true;
+  if (typeof v === 'number') return Number.isNaN(v);
+  if (typeof v === 'string') {
+    const t = v.trim().toLowerCase();
+    return t === '' || t === 'nan' || t === 'null' || t === 'none' || t === 'n/a' || t === 'na';
+  }
+  return false;
+}

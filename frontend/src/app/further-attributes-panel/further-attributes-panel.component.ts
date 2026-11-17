@@ -7,7 +7,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { CellFeature } from '../hexagon-view/cell-feature.types';
 import { InfoService } from '../info.service';
 import { TranslationService } from '../translation.service';
-import { isSpatialOrIdentifierKey } from '../attribute-filters';
+import { isMissingValue, isSpatialOrIdentifierKey } from '../attribute-filters';
 
 export interface AttributeStats {
   key: string;
@@ -579,8 +579,10 @@ export class FurtherAttributesPanelComponent implements OnChanges {
       const valA = a[col];
       const valB = b[col];
 
-      if (valA === null || valA === undefined) return 1;
-      if (valB === null || valB === undefined) return -1;
+      // Missing values (NaN, null, "nan", ...) always last, whichever direction is sorted.
+      const missA = isMissingValue(valA);
+      const missB = isMissingValue(valB);
+      if (missA || missB) return missA === missB ? 0 : (missA ? 1 : -1);
 
       if (typeof valA === 'number' && typeof valB === 'number') {
         return (valA - valB) * asc;

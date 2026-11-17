@@ -15,9 +15,9 @@
 
     <!-- Active Pair Subheader -->
     <div class="pair-subheader" *ngIf="featureA && featureB">
-      <span class="feat-badge map1">{{ featureA.name }}</span>
+      <span class="feat-badge map1">{{ nameA }}</span>
       <span class="vs-label">vs</span>
-      <span class="feat-badge map2">{{ featureB.name }}</span>
+      <span class="feat-badge map2">{{ nameB }}</span>
     </div>
 
     <!-- Scrollable Body -->
@@ -27,8 +27,8 @@
         <span>Calculating cross-map spatial correlation...</span>
       </div>
 
-      <div *ngIf="errorMsg" class="error-state">
-        <mat-icon>error_outline</mat-icon>
+      <div *ngIf="errorMsg" class="error-state" [class.is-info]="errorIsInfo">
+        <mat-icon>{{ errorIsInfo ? 'info_outline' : 'error_outline' }}</mat-icon>
         <span>{{ errorMsg }}</span>
       </div>
 
@@ -61,12 +61,13 @@
           </div>
         </div>
 
-        <!-- Dependency Status Card -->
-        <div class="dependency-card" [class.is-dep]="scatterData.stats.is_dependent">
-          <mat-icon class="dep-icon">{{ scatterData.stats.is_dependent ? 'warning_amber' : 'verified_user' }}</mat-icon>
+        <!-- Dependency warning: only shown when a dependency is detected. No "independent"
+             badge -- the check is a heuristic and cannot vouch for independence. -->
+        <div *ngIf="scatterData.stats.is_dependent" class="dependency-card is-dep">
+          <mat-icon class="dep-icon">warning_amber</mat-icon>
           <div class="dep-info">
-            <span class="dep-title">{{ scatterData.stats.is_dependent ? 'Direct Dependency Detected' : 'Independent Cross-Layer Pair' }}</span>
-            <span class="dep-desc">{{ scatterData.stats.dependency_reason || 'Scores represent independent biological layers.' }}</span>
+            <span class="dep-title">Direct Dependency Detected</span>
+            <span class="dep-desc" *ngIf="scatterData.stats.dependency_reason">{{ scatterData.stats.dependency_reason }}</span>
           </div>
         </div>
 
@@ -79,9 +80,9 @@
             <!-- This canvas IS the legend for the map: same bivariateColor(u, v) blend, pixel
                  for pixel, so it can't drift out of sync with what the map actually shows. -->
             <div class="bivariate-legend-col">
-              <span class="axis-label-y">{{ featureB?.name }}</span>
+              <span class="axis-label-y">{{ nameB }}</span>
               <canvas #bivariateLegendCanvas class="bivariate-legend-canvas"></canvas>
-              <span class="axis-label-x">{{ featureA?.name }}</span>
+              <span class="axis-label-x">{{ nameA }}</span>
             </div>
           </div>
         </div>

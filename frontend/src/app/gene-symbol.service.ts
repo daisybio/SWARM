@@ -11,6 +11,42 @@ import { environment } from '../environments/environment';
 const ENSEMBL_ID_PATTERN = /^ENS[A-Z]{0,4}G\d{6,}(?:\.\d+)?$/i;
 
 /**
+ * The `X-Gene-Canonical` response header (percent-encoded by the backend) of a gene lookup
+ * (`/X/{gene}`, `/obsm/{table}/{column}`), or null when absent/unreadable.
+ */
+export function readCanonicalHeader(headers: { get(name: string): string | null } | null | undefined): string | null {
+  try {
+    const raw = headers?.get('X-Gene-Canonical');
+    return raw ? decodeURIComponent(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The entry of `candidates` that `query` refers to: an exact match first (so nothing changes when
+ * the casing already matches), otherwise the single case-insensitive match. Null when there is no
+ * match or the case-insensitive match is ambiguous (e.g. both `Sox2` and `SOX2` present) -- the
+ * caller then keeps what the user typed. For gene names, which some datasets store lower-case
+ * (`lamp5`) and others not.
+ */
+export function matchGeneName(query: string | null | undefined, candidates: Iterable<string> | null | undefined): string | null {
+  if (query == null || !candidates) return null;
+  const q = String(query).trim();
+  if (!q) return null;
+  const lower = q.toLowerCase();
+  let found: string | null = null;
+  for (const c of candidates) {
+    if (c === q) return c;
+    if (typeof c === 'string' && c.toLowerCase() === lower) {
+      if (found !== null && found !== c) return null;
+      found = c;
+    }
+  }
+  return found;
+}
+
+/**
  * Translates Ensembl gene ids into the gene symbols a biologist actually reads.
  *
  * SPONGE is what makes this necessary. Its ceRNA modules, its interaction network and every
@@ -33,6 +69,12 @@ const ENSEMBL_ID_PATTERN = /^ENS[A-Z]{0,4}G\d{6,}(?:\.\d+)?$/i;
 export class GeneSymbolService {
   /** ENSG (upper-cased, both versioned and unversioned) -> symbol. */
   private readonly symbols = new Map<string, string>();
+
+  /** lower-cased symbol -> symbol, from the symbol maps; null marks a casing conflict. */
+  private readonly symbolsByLower = new Map<string, string | null>();
+
+  /** Name as looked up -> the name the backend resolved it to (X-Gene-Canonical). */
+  private readonly lookedUp = new Map<string, string>();
 
   /** In-flight / completed requests per dataset, so repeated selections don't refetch. */
   private readonly requests = new Map<string, Observable<Record<string, string>>>();
@@ -98,11 +140,52 @@ export class GeneSymbolService {
       const key = String(id).trim().toUpperCase();
       if (!key || !symbol || this.symbols.has(key)) continue;
       this.symbols.set(key, String(symbol));
+      this.addCasing(String(symbol));
       added++;
     }
     if (added > 0) {
       this.changed.next();
     }
+  }
+
+  private addCasing(symbol: string): void {
+    const lower = symbol.toLowerCase();
+    const existing = this.symbolsByLower.get(lower);
+    if (existing === undefined) this.symbolsByLower.set(lower, symbol);
+    else if (existing !== null && existing !== symbol) this.symbolsByLower.set(lower, null);
+  }
+
+  /**
+   * Records which gene a lookup actually resolved to (the backend's `X-Gene-Canonical` header or
+   * `canonical_gene` field), so `label()` shows that casing for the name the user typed/clicked.
+   * Display only: the looked-up name itself is still what gets sent to the backend.
+   */
+  public noteCanonical(requested: string | null | undefined, canonical: string | null | undefined): void {
+    const req = String(requested ?? '').trim();
+    const can = String(canonical ?? '').trim();
+    if (!req || !can || req === can || this.isEnsemblId(can)) return;
+    if (req.toLowerCase() !== can.toLowerCase() && !this.isEnsemblId(req)) return; // not a re-casing
+    if (this.lookedUp.get(req) === can) return;
+    this.lookedUp.set(req, can);
+    this.addCasing(can);
+    // No changed$ emission: template bindings (the impure pipe) pick this up on their own, and
+    // changed$ makes the regulatory graphs redraw, which a single re-cased name doesn't warrant.
+  }
+
+  /**
+   * The canonical casing of a gene name that is not an Ensembl id, when one is known: what the
+   * backend resolved this exact name to, or -- for all-lower-case names like `lamp5` from the
+   * "mapped" datasets' tables -- the one symbol from the symbol maps with that spelling. Names
+   * already in mixed/upper case are left alone (motif and TF names live in the same columns).
+   */
+  public canonicalCase(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const v = value.trim();
+    const noted = this.lookedUp.get(v);
+    if (noted) return noted;
+    if (!v || v !== v.toLowerCase() || !/[a-z]/.test(v)) return null;
+    const symbol = this.symbolsByLower.get(v);
+    return symbol && symbol !== v ? symbol : null;
   }
 
   /** Whether `value` is an Ensembl gene id (and therefore worth translating). */
@@ -127,7 +210,7 @@ export class GeneSymbolService {
    */
   public label(value: unknown): string {
     if (typeof value !== 'string') return String(value ?? '');
-    return this.symbolFor(value) ?? value;
+    return this.symbolFor(value) ?? this.canonicalCase(value) ?? value;
   }
 
   /** `TP53 (ENSG00000141510)` — for the few places with room to show both. */
@@ -151,7 +234,7 @@ export class GeneSymbolService {
     if (!needle) return true;
     const raw = typeof value === 'string' ? value : String(value ?? '');
     if (raw.toLowerCase().includes(needle)) return true;
-    const symbol = this.symbolFor(raw);
+    const symbol = this.symbolFor(raw) ?? this.canonicalCase(raw);
     return !!symbol && symbol.toLowerCase().includes(needle);
   }
 }

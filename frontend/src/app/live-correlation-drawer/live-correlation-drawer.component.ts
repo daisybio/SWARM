@@ -17,6 +17,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import * as Plotly from 'plotly.js-dist-min';
 import * as d3 from 'd3';
+import { extendedPalette } from '../categorical-palette';
+import { describeApiError, isExplanatoryApiError } from '../api-error';
 import { CellFeature } from '../hexagon-view/cell-feature.types';
 
 export interface SpatialFeatureRef {
@@ -63,10 +65,35 @@ export class LiveCorrelationDrawerComponent implements OnChanges, OnDestroy {
   public isLoading: boolean = false;
   public scatterData: any = null;
   public errorMsg: string = '';
+  /** True when errorMsg explains why there is no result (constant feature, too few cells, ...)
+   * rather than reporting a failed request; shown with an info icon instead of an error icon. */
+  public errorIsInfo: boolean = false;
 
   private currentFetchSub: any = null;
 
   constructor(private http: HttpClient) {}
+
+  /** Display names for the pair. The backend's `canonical_name` (genes: the dataset's
+   * var['symbol'] casing) wins over the name the caller passed in, which is whatever the user
+   * typed/clicked (e.g. "lamp5" vs "Lamp5"). */
+  public get nameA(): string {
+    return this.displayName(this.featureA, this.scatterData?.feature_a);
+  }
+
+  public get nameB(): string {
+    return this.displayName(this.featureB, this.scatterData?.feature_b);
+  }
+
+  private displayName(ref: SpatialFeatureRef | null, fromBackend: any): string {
+    const name = ref?.name ?? '';
+    const canonical = typeof fromBackend?.canonical_name === 'string' ? fromBackend.canonical_name : '';
+    if (!canonical || this.isLoading) return name;
+    if (fromBackend?.category === 'gene_expression') {
+      const prefix = name.includes(': ') ? name.split(': ')[0] : 'Gene';
+      return `${prefix}: ${canonical}`;
+    }
+    return name;
+  }
 
   public onClose(): void {
     this.drawerClosed.emit();
@@ -113,6 +140,7 @@ export class LiveCorrelationDrawerComponent implements OnChanges, OnDestroy {
 
     this.isLoading = true;
     this.errorMsg = '';
+    this.errorIsInfo = false;
 
     let url = `/api/datasets/${encodeURIComponent(this.datasetId)}/spatial_correlation_pair?feature_id_a=${encodeURIComponent(this.featureA.id)}&feature_id_b=${encodeURIComponent(this.featureB.id)}`;
     if (this.datasetIdCompare && this.datasetIdCompare !== this.datasetId) {
@@ -134,10 +162,14 @@ export class LiveCorrelationDrawerComponent implements OnChanges, OnDestroy {
       },
       error: (err) => {
         this.isLoading = false;
-        // Deliberately generic and always the same message, regardless of the backend's actual
-        // detail -- that detail can be a raw, unfiltered exception message (e.g. an internal
-        // TypeError from a computation bug), not something meant for an end user to read.
-        this.errorMsg = "Can't correlate the selected pair";
+        // Drop the previous pair's result so its plots/stats don't stay up under the error.
+        this.scatterData = null;
+        // The backend's structured reason (gene not found, constant feature, too few cells, ...)
+        // when it sent one; 5xx and unrecognised errors keep the generic text, since their detail
+        // can be a raw exception message (see api-error.ts).
+        this.errorMsg = describeApiError(err, "Can't correlate the selected pair");
+        // e.g. 422 feature_constant: the request was fine, the pair just has no correlation.
+        this.errorIsInfo = isExplanatoryApiError(err);
         console.error('Failed to load drawer scatter data:', err);
       }
     });
@@ -160,14 +192,17 @@ export class LiveCorrelationDrawerComponent implements OnChanges, OnDestroy {
     // works by accident for numeric-looking leiden ids, and silently falls back to a single flat
     // color for cell_type labels like "B cell", since those aren't valid CSS color names either.
     // Map each distinct cluster to its own color from a qualitative palette instead.
-    const clusterColorScale = d3.scaleOrdinal<string>(d3.schemeSet2).domain(Array.from(new Set(clusters)));
+    const distinctClusters = Array.from(new Set<string>(clusters));
+    // extendedPalette: Set2 first, then generated colors, so clusters beyond the 8th don't reuse one.
+    const clusterColorScale = d3.scaleOrdinal<string>(extendedPalette(d3.schemeSet2, distinctClusters.length))
+      .domain(distinctClusters);
     const pointColors = clusters.map((c: string) => clusterColorScale(c));
 
     const hoverTexts = points.map(
       (p: any) =>
         `<b>Cell:</b> ${p.cell_id}<br>` +
-        `<b>${this.featureA?.name}:</b> ${typeof p.x === 'number' ? p.x.toFixed(3) : p.x}<br>` +
-        `<b>${this.featureB?.name}:</b> ${typeof p.y === 'number' ? p.y.toFixed(3) : p.y}<br>` +
+        `<b>${this.nameA}:</b> ${typeof p.x === 'number' ? p.x.toFixed(3) : p.x}<br>` +
+        `<b>${this.nameB}:</b> ${typeof p.y === 'number' ? p.y.toFixed(3) : p.y}<br>` +
         `<b>Cluster:</b> ${p.cluster}`
     );
 
@@ -207,12 +242,12 @@ export class LiveCorrelationDrawerComponent implements OnChanges, OnDestroy {
       height: 220,
       showlegend: false,
       xaxis: {
-        title: { text: this.featureA?.name || 'Map 1 (Left)', font: { size: 10 } },
+        title: { text: this.nameA || 'Map 1 (Left)', font: { size: 10 } },
         automargin: true,
         tickfont: { size: 9 }
       },
       yaxis: {
-        title: { text: this.featureB?.name || 'Map 2 (Right)', font: { size: 10 } },
+        title: { text: this.nameB || 'Map 2 (Right)', font: { size: 10 } },
         automargin: true,
         tickfont: { size: 9 }
       }

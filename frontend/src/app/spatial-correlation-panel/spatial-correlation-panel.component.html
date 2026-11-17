@@ -25,7 +25,11 @@
       <span>Computing spatial correlation matrix...</span>
     </div>
 
-    <div *ngIf="!isLoadingMatrix && features.length === 0" class="empty-matrix">
+    <div *ngIf="!isLoadingMatrix && matrixError" class="empty-matrix">
+      <p>{{ matrixError }}</p>
+    </div>
+
+    <div *ngIf="!isLoadingMatrix && !matrixError && features.length === 0" class="empty-matrix">
       <p>No continuous score layers available for spatial correlation in this dataset.</p>
     </div>
 
@@ -37,7 +41,7 @@
     <mat-icon class="empty-state-icon">touch_app</mat-icon>
     <div class="empty-state-title">No Comparison Selected</div>
     <div class="empty-state-message">
-      Click on any cell in the correlation matrix above to inspect its spatial scatter plot, trendline, and dependency check.
+      Click on any cell in the correlation matrix above to inspect its spatial scatter plot, and trendline.
     </div>
   </div>
 
@@ -49,14 +53,11 @@
           <h4>{{ selectedFeatureA?.name }} <span class="vs-label">vs</span> {{ selectedFeatureB?.name }}</h4>
         </div>
 
-        <!-- Dependency / Circularity Warning Badge -->
-        <div class="dependency-badge" [class.is-dependent]="pairScatterData?.stats?.is_dependent">
-          <mat-icon class="badge-icon">
-            {{ pairScatterData?.stats?.is_dependent ? 'warning' : 'verified' }}
-          </mat-icon>
-          <span>
-            {{ pairScatterData?.stats?.is_dependent ? 'Direct Dependency / Circularity' : 'Independent Cross-Layer' }}
-          </span>
+        <!-- Dependency / Circularity Warning Badge: only shown when a dependency is detected. No
+             "independent" badge -- the check is a heuristic and cannot vouch for independence. -->
+        <div *ngIf="pairScatterData?.stats?.is_dependent" class="dependency-badge is-dependent">
+          <mat-icon class="badge-icon">warning</mat-icon>
+          <span>Direct Dependency / Circularity</span>
           <span *ngIf="pairScatterData?.stats?.dependency_reason" class="badge-reason">
             ({{ pairScatterData?.stats?.dependency_reason }})
           </span>

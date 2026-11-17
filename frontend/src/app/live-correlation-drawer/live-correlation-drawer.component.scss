@@ -141,6 +141,11 @@
 
       .error-state {
         color: #000000;
+        text-align: center;
+
+        &.is-info {
+          color: #475569;
+        }
       }
 
       .correlation-content {

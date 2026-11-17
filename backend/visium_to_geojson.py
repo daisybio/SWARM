@@ -7,6 +7,8 @@ import scanpy as sc
 import simplejson as json
 from scipy import sparse
 
+from geojson_compaction import move_constant_properties
+
 # python ../backend/visium_to_geojson.py --adata ../backend/uploads/job_1764657831787_merit/junkDNA420/adata_st_scores.h5ad --outpath /workspaces/swarm/backend/uploads/job_1764657831787_merit/junkDNA420/hexagons.geojson
 
 grn_score_names = (
@@ -685,12 +687,17 @@ if __name__ == "__main__":
 
     geojson_data["meta"] = meta_dict
 
+    # Sample-level obs columns (donor, sex, section id, ...) have the same value in every cell;
+    # store each once in meta["constant_properties"] instead of once per cell.
+    moved = move_constant_properties(geojson_data)
+    if moved:
+        print(f"Moved {len(moved)} constant per-cell properties to meta: {sorted(moved)}")
+
     os.makedirs(os.path.dirname(args.outpath), exist_ok=True)
 
-    # Convert all numpy types to JSON-serializable types before dumping
-    geojson_data = geojson_data
-
+    # Compact separators (no indent): the file is only read by machines, and indentation alone
+    # made up a large share of its size.
     with open(args.outpath, "w+") as f:
-        json.dump(geojson_data, f, indent=4, ignore_nan=True)
+        json.dump(geojson_data, f, separators=(",", ":"), ignore_nan=True)
 
     print("GeoJSON file created successfully.")

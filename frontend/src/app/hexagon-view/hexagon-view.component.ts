@@ -1,4 +1,4 @@
-import { Component, ElementRef, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, ViewChild } from '@angular/core';
+import { ChangeDetectorRef, Component, ElementRef, EventEmitter, Input, NgZone, OnChanges, OnDestroy, Output, SimpleChanges, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
@@ -59,6 +59,13 @@ export interface HexagonRenderContext {
   continuousColorScale: (t: number) => string;
   leidenClusterAnnotations: Record<string, any> | undefined;
   leidenCentralityProps: string[];
+  /**
+   * Compare mode's "same scale" option: the other map's (full) features. When set, this map uses
+   * the smaller of the two fitted scales, so one data unit (micron) is the same on-screen size in
+   * both maps and two sections can be compared by size and shape; each map is still centered on
+   * its own section. Null/absent: fit this map's own extent (the default).
+   */
+  sharedScaleFeatures?: CellFeature[] | null;
 }
 
 /**
@@ -152,7 +159,6 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
   @Input() isLoadingMap = false;
   @Input() compareMode = false;
   @Input() currentDataSetSupportsCompare = true;
-  @Input() isXeniumDatasetSelected = false;
   @Input() isLiveDrawerOpen = false;
   @Input() groupedProperties: { key: string; value: string[] }[] | null = null;
   @Input() selectedDataset: Dataset | null = null;
@@ -216,11 +222,41 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
   private static readonly ZOOM_SCALE_EXTENT: [number, number] = [0.35, 5];
 
   // ======= Xenium detail-window state =======
+  /** Per instance: clip-path ids are document-global, and with two maps on the page a shared id
+   * made the compare map's magnifier clip to the main map's window. */
+  private get detailClipId(): string {
+    return this.isCompare ? 'detail-clip-compare' : 'detail-clip';
+  }
+  /** Projection of the last render, for mapping the magnifier window back to data coordinates. */
+  private currentProjection: d3.GeoIdentityTransform | null = null;
+  /** Planar bounds per feature array (arrays are replaced, never mutated, on a new dataset). */
+  private static readonly boundsCache = new WeakMap<CellFeature[], [[number, number], [number, number]]>();
   private readonly detailSize = 80;
   private detailVisible = false;
   private detailScreenPos: { x: number; y: number } | null = null;
   private keydownHandler: ((event: KeyboardEvent) => void) | null = null;
   private lastRenderCtx: HexagonRenderContext | null = null;
+
+  /**
+   * The parent's current value -> color mapping (set by its updateHexColors() on every recolor).
+   * Used for cells this component draws on its own after that recolor -- the Xenium magnifier's
+   * cells -- so they get the same normalized continuous scale / categorical palette as the base
+   * layer rather than the render-time snapshot in lastRenderCtx.
+   */
+  private fillAccessor: ((d: CellFeature) => string) | null = null;
+
+  public setFillAccessor(fn: (d: CellFeature) => string): void {
+    this.fillAccessor = fn;
+  }
+
+  /**
+   * All D3 listeners (zoom, hover, click) are registered outside Angular's zone. Inside it, every
+   * wheel/mousemove on the map triggered an app-wide change-detection pass, which is what made
+   * panning/zooming and hovering sluggish on large datasets. Handlers that change this
+   * component's own template state (the hover tooltip) call cdr.detectChanges() for a local
+   * check; the click handler re-enters the zone since it drives the rest of the app.
+   */
+  constructor(private zone: NgZone, private cdr: ChangeDetectorRef) {}
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['selectedView'] || changes['legendInfo']) {
@@ -293,31 +329,33 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
   }
 
   public createHexagonPlot(): void {
-    const width = 1000;
-    const height = 1000;
+    // Outside the zone: see the constructor doc.
+    this.zone.runOutsideAngular(() => {
+      const width = 1000;
+      const height = 1000;
 
-    const container = d3.select(this.hexbinContainerRef.nativeElement);
-    const svgSel = container
-      .selectAll('svg')
-      .data([0])
-      .join('svg')
-      .attr('viewBox', [0, 0, 1000, 1000] as [number, number, number, number])
-      .attr('preserveAspectRatio', 'xMidYMid meet')
-      .style('background-color', 'white')
-      .style('overflow', 'hidden')
-      .on('mouseleave', () => this.clearUnselectedHoverBorders());
+      const container = d3.select(this.hexbinContainerRef.nativeElement);
+      const svgSel = container
+        .selectAll('svg')
+        .data([0])
+        .join('svg')
+        .attr('viewBox', [0, 0, 1000, 1000] as [number, number, number, number])
+        .attr('preserveAspectRatio', 'xMidYMid meet')
+        .style('background-color', 'white')
+        .style('overflow', 'hidden')
+        .on('mouseleave', () => this.clearUnselectedHoverBorders());
 
-    const gSel = svgSel
-      .selectAll<SVGGElement, number>('g.root-group')
-      .data([0])
-      .join('g')
-      .attr('class', 'root-group');
+      const gSel = svgSel
+        .selectAll<SVGGElement, number>('g.root-group')
+        .data([0])
+        .join('g')
+        .attr('class', 'root-group');
 
-    this.svg = svgSel as unknown as d3.Selection<SVGSVGElement, any, any, any>;
-    this.g = gSel as any;
+      this.svg = svgSel as unknown as d3.Selection<SVGSVGElement, any, any, any>;
+      this.g = gSel as any;
 
-    if (!this.isCompare) {
-      // Xenium layers live only in the main view.
+      // Xenium layers (downsampled base layer + magnifier detail layer) on both sides: the
+      // compare map of a Xenium/MERFISH dataset gets the same magnifier as the main map.
       this.baseLayer = this.g.selectAll<SVGGElement, unknown>('g.base-layer')
         .data([null])
         .join('g')
@@ -327,33 +365,34 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
         .data([null])
         .join('g')
         .attr('class', 'detail-layer')
-        .attr('clip-path', 'url(#detail-clip)');
-    }
+        .attr('clip-path', `url(#${this.detailClipId})`);
 
-    const zoomBehavior = d3
-      .zoom<SVGSVGElement, unknown>()
-      .scaleExtent(HexagonViewComponent.ZOOM_SCALE_EXTENT)
-      .extent([
-        [0, 0],
-        [width, height],
-      ])
-      .filter((event) => {
-        // Standard D3 zoom filter: allow wheel and primary mouse button drags
-        return (!event.ctrlKey || event.type === 'wheel') && !event.button;
-      })
-      .on('zoom', (event) => {
-        this.g.attr('transform', event.transform.toString());
-        this.currentTransform = event.transform;
-      });
+      const zoomBehavior = d3
+        .zoom<SVGSVGElement, unknown>()
+        .scaleExtent(HexagonViewComponent.ZOOM_SCALE_EXTENT)
+        .extent([
+          [0, 0],
+          [width, height],
+        ])
+        .filter((event) => {
+          // Standard D3 zoom filter: allow wheel and primary mouse button drags
+          return (!event.ctrlKey || event.type === 'wheel') && !event.button;
+        })
+        .on('zoom', (event) => {
+          this.g.attr('transform', event.transform.toString());
+          this.currentTransform = event.transform;
+        });
 
-    (svgSel as any).call(zoomBehavior);
-    // createHexagonPlot() reuses the existing <svg> via .join() rather than always creating a
-    // fresh one (see clearSvg()'s doc comment, which this method's own comment promises but
-    // doesn't itself guarantee) -- without this, any prior zoom/pan (D3's internal state lives
-    // on the DOM node) silently carries over to whatever dataset/view is rendered next, so a
-    // freshly-fitted projection for the new dataset gets viewed through a stale camera position.
-    (svgSel as any).call(zoomBehavior.transform, d3.zoomIdentity);
-    this.currentTransform = d3.zoomIdentity;
+      (svgSel as any).call(zoomBehavior);
+      // createHexagonPlot() reuses the existing <svg> via .join() rather than always creating a
+      // fresh one (see clearSvg()'s doc comment, which this method's own comment promises but
+      // doesn't itself guarantee) -- without this, any prior zoom/pan (D3's internal state lives
+      // on the DOM node) silently carries over to whatever dataset/view is rendered next, so a
+      // freshly-fitted projection for the new dataset gets viewed through a stale camera position.
+      (svgSel as any).call(zoomBehavior.transform, d3.zoomIdentity);
+      this.currentTransform = d3.zoomIdentity;
+  
+    });
   }
 
   public renderHexagons(ctx: HexagonRenderContext): void {
@@ -362,14 +401,18 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     const height = 1000;
     const padding = 20;
 
-    const projection = d3.geoIdentity().fitExtent(
-      [[padding, padding], [width - padding, height - padding]],
-      {
-        type: 'FeatureCollection',
-        features: ctx.isXenium ? ctx.fullFeatures : ctx.features,
-      },
-    );
+    const ownFeatures = ctx.isXenium ? ctx.fullFeatures : ctx.features;
+    const projection = ctx.sharedScaleFeatures?.length
+      ? HexagonViewComponent.sharedScaleProjection(ownFeatures, ctx.sharedScaleFeatures, width, height, padding)
+      : d3.geoIdentity().fitExtent(
+        [[padding, padding], [width - padding, height - padding]],
+        {
+          type: 'FeatureCollection',
+          features: ownFeatures,
+        },
+      );
 
+    this.currentProjection = projection;
     this.currentPathGenerator = d3.geoPath<CellFeature>().projection(projection);
     const pathGenerator = this.currentPathGenerator;
 
@@ -385,10 +428,13 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     }
 
     if (ctx.isXenium) {
+      // Centroids in data coordinates (projection-independent, so computed once per cell even
+      // when the projection changes, e.g. with the compare "same scale" toggle). The magnifier
+      // maps its window back into data coordinates to pick the cells inside it.
+      const planar = d3.geoPath();
       ctx.fullFeatures.forEach((f) => {
-        if (!(f.properties as any).__centroidProjected) {
-          const c = this.currentPathGenerator!.centroid(f as any);
-          (f.properties as any).__centroidProjected = c;
+        if (!(f.properties as any).__centroidData) {
+          (f.properties as any).__centroidData = planar.centroid(f as any);
         }
       });
     }
@@ -404,6 +450,19 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
       return Number.isFinite(num) ? ctx.continuousColorScale(num) : '#ccc';
     };
 
+    this.zone.runOutsideAngular(() => {
+    // This <svg> is reused across datasets: drop paths the other render mode left behind (plain
+    // maps draw straight into the root group, Xenium maps into the base layer), or switching
+    // between a Xenium and a non-Xenium dataset leaves stale, non-interactive cells on screen.
+    if (ctx.isXenium) {
+      this.g.selectChildren('path').remove();
+    } else {
+      this.baseLayer?.selectAll('path').remove();
+      this.detailLayer?.selectAll('path').remove();
+      this.svg?.select('#detail-frame').style('display', 'none');
+      this.detailVisible = false;
+      this.detailScreenPos = null;
+    }
     if (ctx.isXenium) {
       this.baseLayer
         .style('cursor', 'default')
@@ -413,6 +472,8 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
         .join('path')
         .attr('d', (d: CellFeature) => pathGenerator(d) || '')
         .attr('fill', getFill)
+        // Styles are rewritten here, so drop updateSelectionHighlight()'s per-path state cache.
+        .property('__hlState', null)
         .style('opacity', 0.8);
     } else {
       this.g
@@ -423,15 +484,49 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
         .join('path')
         .attr('d', (d: CellFeature) => pathGenerator(d) || '')
         .attr('fill', getFill)
+        // Styles are rewritten here, so drop updateSelectionHighlight()'s per-path state cache.
+        .property('__hlState', null)
         .style('opacity', 0.8)
         .on('mouseover', (event, d) => this.mouseOver(event, d))
         .on('mousemove', (event) => this.mouseMove(event))
         .on('mouseleave', (event, d) => this.mouseLeave(event, d))
-        .on('click', (event, d) => this.cellClicked.emit({ event, cell: d }));
+        .on('click', (event, d) => this.zone.run(() => this.cellClicked.emit({ event, cell: d })));
     }
+    });
     // Note: initDetailWindow/hideDetailWindow/bindDetailWindowInteractions are NOT called here —
     // the original calls them from loadAndRenderData, before renderHexagons, as part of Xenium
     // setup. The parent redirects that same call sequence to this instance's public methods.
+  }
+
+  /**
+   * Identity projection (no reflection, like geoIdentity().fitExtent) whose scale fits whichever of
+   * `own` / `other` needs the smaller scale, centered on `own`'s extent.
+   */
+  private static sharedScaleProjection(
+    own: CellFeature[], other: CellFeature[], width: number, height: number, padding: number,
+  ): d3.GeoIdentityTransform {
+    const fitScale = (b: [[number, number], [number, number]]): number => {
+      const dx = b[1][0] - b[0][0];
+      const dy = b[1][1] - b[0][1];
+      const kx = dx > 0 ? (width - 2 * padding) / dx : Infinity;
+      const ky = dy > 0 ? (height - 2 * padding) / dy : Infinity;
+      const k = Math.min(kx, ky);
+      return Number.isFinite(k) ? k : 1;
+    };
+    const ownBounds = HexagonViewComponent.planarBounds(own);
+    const k = Math.min(fitScale(ownBounds), fitScale(HexagonViewComponent.planarBounds(other)));
+    const cx = (ownBounds[0][0] + ownBounds[1][0]) / 2;
+    const cy = (ownBounds[0][1] + ownBounds[1][1]) / 2;
+    return d3.geoIdentity().scale(k).translate([width / 2 - k * cx, height / 2 - k * cy]);
+  }
+
+  private static planarBounds(features: CellFeature[]): [[number, number], [number, number]] {
+    let b = HexagonViewComponent.boundsCache.get(features);
+    if (!b) {
+      b = d3.geoPath().bounds({ type: 'FeatureCollection', features } as any) as [[number, number], [number, number]];
+      HexagonViewComponent.boundsCache.set(features, b);
+    }
+    return b;
   }
 
   public extendCluster(selectedCluster: string | number, _features?: CellFeature[]): void {
@@ -479,19 +574,27 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     const currentView = this.selectedView || this.lastRenderCtx?.selectedView || '';
     const activeCluster = this.isActiveViewCategorical ? this.activeClusterValue : null;
 
+    const selectedBarcode = this.selectedCell?.properties?.barcode;
     this.g.selectAll<SVGPathElement, CellFeature>('path')
       .each((d: CellFeature, i, nodes) => {
         if (!d || !d.properties) return;
-        const el = d3.select(nodes[i]);
-        const isSelectedCell = !!this.selectedCell && d.properties.barcode === this.selectedCell.properties.barcode;
+        const isSelectedCell = selectedBarcode !== undefined && d.properties.barcode === selectedBarcode;
         const isClusterMember = activeCluster !== null && this.isSameCluster(d.properties[currentView], activeCluster);
+        const state = isSelectedCell ? 2 : (isClusterMember ? 1 : 0);
+        // Only touch the DOM for paths whose highlight actually changes: this runs over every
+        // path on each recolor / selection / mouse-leave, and rewriting three attributes on
+        // thousands of unchanged paths each time was a measurable part of the map's lag.
+        const node = nodes[i] as SVGPathElement & { __hlState?: number };
+        if (node.__hlState === state) return;
+        node.__hlState = state;
+        const el = d3.select(node);
 
-        if (isSelectedCell) {
+        if (state === 2) {
           el.interrupt()
             .attr('stroke', '#000')
             .attr('stroke-width', '3px')
             .style('opacity', 0.85);
-        } else if (isClusterMember) {
+        } else if (state === 1) {
           el.interrupt()
             .attr('stroke', '#000')
             .attr('stroke-width', '1.4px')
@@ -546,6 +649,9 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     if (!targetEl) return;
     const el = d3.select(targetEl);
     el.interrupt();
+    // Hover styling diverges from the cached highlight state -- force the next
+    // updateSelectionHighlight() to rewrite this path.
+    (targetEl as { __hlState?: number }).__hlState = -1;
 
     const currentView = this.selectedView || this.lastRenderCtx?.selectedView || '';
     const activeCluster = this.isActiveViewCategorical ? this.activeClusterValue : null;
@@ -573,16 +679,19 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     };
 
     this.updateTooltipPos(event);
+    this.cdr.detectChanges();
   }
 
   private mouseMove(event: MouseEvent): void {
     if (this.hoveredHexInfo) {
       this.updateTooltipPos(event);
+      this.cdr.detectChanges();
     }
   }
 
   private mouseLeave(event: MouseEvent, d: CellFeature): void {
     this.hoveredHexInfo = null;
+    this.cdr.detectChanges();
     const targetEl = (event.currentTarget || event.target) as SVGElement;
     if (!targetEl) return;
     const el = d3.select(targetEl);
@@ -593,6 +702,8 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
 
     const isSelectedCell = !!this.selectedCell && d.properties?.barcode === this.selectedCell.properties?.barcode;
     const isClusterMember = activeCluster !== null && this.isSameCluster(d.properties?.[currentView], activeCluster);
+
+    (targetEl as { __hlState?: number }).__hlState = isSelectedCell ? 2 : (isClusterMember ? 1 : 0);
 
     if (isSelectedCell) {
       el.attr('stroke', '#000')
@@ -618,10 +729,10 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
       ? this.svg.append('defs')
       : this.svg.select('defs');
 
-    defs.select('#detail-clip').remove();
+    defs.select(`#${this.detailClipId}`).remove();
 
     defs.append('clipPath')
-      .attr('id', 'detail-clip')
+      .attr('id', this.detailClipId)
       .append('rect')
       .attr('id', 'detail-window')
       .attr('x', 30)
@@ -660,17 +771,19 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     this.svg.on('dblclick.detail', null);
     this.svg.on('contextmenu.detail', null);
 
-    this.svg.on('dblclick.detail', (event: MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const [mx, my] = d3.pointer(event, this.svg.node());
-      this.setDetailWindow(mx, my);
-    });
+    this.zone.runOutsideAngular(() => {
+      this.svg.on('dblclick.detail', (event: MouseEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const [mx, my] = d3.pointer(event, this.svg.node());
+        this.setDetailWindow(mx, my);
+      });
 
-    this.svg.on('contextmenu.detail', (event: MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      this.clearDetailWindow();
+      this.svg.on('contextmenu.detail', (event: MouseEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.clearDetailWindow();
+      });
     });
 
     if (this.keydownHandler) {
@@ -685,6 +798,8 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
   }
 
   private setDetailWindow(screenX: number, screenY: number): void {
+    // The dblclick binding outlives a switch to a non-Xenium dataset on the same <svg>.
+    if (!this.lastRenderCtx?.isXenium) return;
     this.detailVisible = true;
     this.detailScreenPos = { x: screenX, y: screenY };
     this.showDetailWindowAt(screenX, screenY);
@@ -757,21 +872,34 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
       `translate(${targetX},${targetY}) scale(${localScale}) translate(${-centerX},${-centerY})`,
     );
 
+    // The window in data coordinates (centroids are stored unprojected, see renderHexagons).
+    const projection = this.currentProjection;
+    if (!projection) return;
+    const p0 = projection.invert([x0d, y0d]);
+    const p1 = projection.invert([x1d, y1d]);
+    if (!p0 || !p1) return;
+    const minX = Math.min(p0[0], p1[0]);
+    const maxX = Math.max(p0[0], p1[0]);
+    const minY = Math.min(p0[1], p1[1]);
+    const maxY = Math.max(p0[1], p1[1]);
+
     const subset = ctx.fullFeatures.filter((f) => {
-      const c = (f.properties as any).__centroidProjected;
+      const c = (f.properties as any).__centroidData;
       if (!c || c.length < 2) return false;
       const [x, y] = c as [number, number];
-      return x >= x0d && x <= x1d && y >= y0d && y <= y1d;
+      return x >= minX && x <= maxX && y >= minY && y <= maxY;
     });
 
     const pathGenerator = this.currentPathGenerator;
-    this.detailLayer
+    const fillAccessor = this.fillAccessor;
+    this.zone.runOutsideAngular(() => this.detailLayer
       .style('cursor', 'pointer')
       .selectAll<SVGPathElement, CellFeature>('path')
       .data(subset)
       .join('path')
       .attr('d', (d: CellFeature) => pathGenerator(d) || '')
       .attr('fill', (d: CellFeature) => {
+        if (fillAccessor) return fillAccessor(d);
         const value = ctx.leidenCentralityProps.includes(ctx.selectedView)
           ? ctx.leidenClusterAnnotations?.[String(d.properties.leiden)]?.centrality?.[ctx.selectedView]
           : d.properties?.[ctx.selectedView];
@@ -787,6 +915,6 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
       .on('mouseover', (event, d) => this.mouseOver(event, d))
       .on('mousemove', (event) => this.mouseMove(event))
       .on('mouseleave', (event, d) => this.mouseLeave(event, d))
-      .on('click', (event, d) => this.cellClicked.emit({ event, cell: d }));
+      .on('click', (event, d) => this.zone.run(() => this.cellClicked.emit({ event, cell: d }))));
   }
 }

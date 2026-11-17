@@ -21,7 +21,7 @@
           [builtinDatasets$]="builtinDatasets$" [uploadedDatasets$]="uploadedDatasets$"
           [tangramDatasets$]="tangram_Datasets$" [propertyAvailableFn]="propertyAvailableBound"
           [compareMode]="compareMode" [currentDataSetSupportsCompare]="currentDataSetSupportsCompare"
-          [isXeniumDatasetSelected]="isXeniumDatasetSelected" [isLiveDrawerOpen]="isLiveDrawerOpen"
+          [isLiveDrawerOpen]="isLiveDrawerOpen"
           (cellClicked)="displayCellDetails($event.cell, false)"
           (legendCategoryClicked)="onLegendCategoryClicked($event, false)"
           (selectedViewChange)="selectedView = $event" (colorByChanged)="onColorbyPropertyChange(false)"
@@ -34,8 +34,8 @@
         <!-- Compare / Live Correlation Buttons – always in map-column -->
         <div class="compare-mode-toggles-divider">
           <button class="basic-button" id="compare-button" (click)="onCompareMode()"
-            [matTooltip]="isXeniumDatasetSelected ? 'Comparison view not supported for Xenium datasets' : 'Toggle comparison view'"
-            [disabled]="!currentDataSetSupportsCompare || isInitializing || isXeniumDatasetSelected">
+            matTooltip="Toggle comparison view"
+            [disabled]="!currentDataSetSupportsCompare || isInitializing">
             <mat-icon style="color: black;">compare_arrows</mat-icon>
           </button>
 
@@ -43,6 +43,18 @@
             [class.active]="isLiveDrawerOpen" matTooltip="Toggle Live Correlation Side Drawer">
             <mat-icon style="color: black;">insights</mat-icon>
             <span style="color: black; font-weight: 700; margin-left: 4px;">Show Correlation</span>
+          </button>
+
+          <!-- Extent handling for the two maps: off = each fits its own section (default),
+               on = same microns per pixel on both, each centered on its own section. -->
+          <button *ngIf="compareMode" class="basic-button" id="same-scale-button" type="button"
+            (click)="toggleCompareSameScale()" [class.active]="compareSameScale"
+            [attr.aria-pressed]="compareSameScale"
+            [matTooltip]="compareSameScale
+              ? 'Both maps use the same scale (sizes comparable). Click to fit each map to its own section.'
+              : 'Each map is fitted to its own section. Click to draw both at the same scale.'">
+            <mat-icon style="color: black;">straighten</mat-icon>
+            <span style="color: black; font-weight: 700; margin-left: 4px;">{{ compareSameScale ? 'Same scale: on' : 'Same scale: off' }}</span>
           </button>
         </div>
       </div>
@@ -58,7 +70,8 @@
 
             <mat-tab label="Cell Information" #cellInfoTab>
               <app-cell-info-panel [cell]="selectedCell" [currentView]="selectedView"
-                [datasetFeatures]="features"></app-cell-info-panel>
+                [datasetFeatures]="features"
+                [constantProperties]="meta?.['constant_properties']"></app-cell-info-panel>
             </mat-tab>
 
             <mat-tab label="Cluster Information" *ngIf="selectedCluster !== null" #clusterInfoTab>
@@ -106,7 +119,7 @@
                 <div class="selected-gene-info">
                   <strong>Current selection</strong><br>
                   Score: {{ showMoranI ? "Moran's I" : "Geary's C" }}<br>
-                  Gene: {{ selectedGeneExpressionMain || selectedGeneExpressionCompare || meta['default_gene_expression_gene'] || 'None' }}
+                  Gene: {{ geneLabel(selectedGeneExpressionMain || selectedGeneExpressionCompare || meta['default_gene_expression_gene']) || 'None' }}
                 </div>
 
                 <div class="moran-geary-toggle"
@@ -126,7 +139,7 @@
                     <mat-icon>help_outline</mat-icon>
                     </button>
                   </h4>
-                  <app-table [data]="this.meta['moranI']" [actionColumns]="['gene_expression']" [features]="features"
+                  <app-table [data]="this.meta['moranI']" [actionColumns]="['gene_expression']" [features]="allMapCells(false)"
                     [updateColumn]="'gene_expression'" [emptyMessage]="'No Moran\'s I scores loaded'"
                     [datasetId]="selectedDataset?.id" [indexColumnLabel]="'Gene'"
                     [filters]="geneExpressionSharedFilters" [sortState]="geneExpressionSharedSortState"
@@ -142,7 +155,7 @@
                     <mat-icon>help_outline</mat-icon>
                     </button>
                   </h4>
-                  <app-table [data]="this.meta['gearyC']" [actionColumns]="['gene_expression']" [features]="features"
+                  <app-table [data]="this.meta['gearyC']" [actionColumns]="['gene_expression']" [features]="allMapCells(false)"
                     [updateColumn]="'gene_expression'" [emptyMessage]="'No Geary\'s C scores loaded'"
                     [datasetId]="selectedDataset?.id" [indexColumnLabel]="'Gene'"
                     [filters]="geneExpressionSharedFilters" [sortState]="geneExpressionSharedSortState"
@@ -369,7 +382,8 @@
 
               <mat-tab label="Cell Information" #cellInfoTabCompare>
                 <app-cell-info-panel [cell]="selectedCellCompare" [currentView]="selectedCompareView"
-                  [datasetFeatures]="compareFeatures"></app-cell-info-panel>
+                  [datasetFeatures]="compareFeatures"
+                  [constantProperties]="metaCompare?.['constant_properties']"></app-cell-info-panel>
               </mat-tab>
 
               <mat-tab label="Cluster Information" *ngIf="selectedClusterCompare !== null" #clusterInfoTabCompare>
@@ -433,7 +447,7 @@
                   <ng-template #moranI>
                     <h4>Moran's I</h4>
                     <app-table [data]="this.metaCompare['moranI']" [actionColumns]="['gene_expression']"
-                      [features]="compareFeatures" [updateColumn]="'gene_expression'" [isCompare]="true"
+                      [features]="allMapCells(true)" [updateColumn]="'gene_expression'" [isCompare]="true"
                       [datasetId]="selectedDatasetCompare?.id || selectedDataset?.id" [indexColumnLabel]="'Gene'"
                       [filters]="geneExpressionSharedFiltersCompare" [sortState]="geneExpressionSharedSortStateCompare"
                       [resetStateOnDataChange]="false"
@@ -445,7 +459,7 @@
                   <ng-template #gearyC>
                     <h4>Geary's C</h4>
                     <app-table [data]="this.metaCompare['gearyC']" [actionColumns]="['gene_expression']"
-                      [features]="compareFeatures" [updateColumn]="'gene_expression'" [isCompare]="true"
+                      [features]="allMapCells(true)" [updateColumn]="'gene_expression'" [isCompare]="true"
                       [datasetId]="selectedDatasetCompare?.id || selectedDataset?.id" [indexColumnLabel]="'Gene'"
                       [filters]="geneExpressionSharedFiltersCompare" [sortState]="geneExpressionSharedSortStateCompare"
                       [resetStateOnDataChange]="false"

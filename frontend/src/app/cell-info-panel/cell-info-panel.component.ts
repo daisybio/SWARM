@@ -27,6 +27,12 @@ export class CellInfoPanelComponent {
   @Input() cell: CellFeature | null = null;
   @Input() currentView = '';
   @Input() datasetFeatures: CellFeature[] = [];
+  /**
+   * Properties with one identical value for every cell of the dataset (donor, sex, section id,
+   * ...). The backend stores these once in the GeoJSON's meta["constant_properties"] instead of
+   * on every feature; they are merged back in here so a selected cell still lists them.
+   */
+  @Input() constantProperties: Record<string, unknown> | null | undefined = null;
 
   constructor(
     public infoService: InfoService,
@@ -147,15 +153,24 @@ export class CellInfoPanelComponent {
     this.computeNonEmptyProps();
 
     const buckets = new Map<string, PropertyGroupItem[]>();
-    for (const key of Object.keys(cell.properties)) {
+    const constants = this.constantProperties ?? {};
+    // The cell's own properties win over a dataset-level constant of the same name.
+    const cellProps = cell.properties as Record<string, unknown>;
+    const keys = [...Object.keys(cellProps), ...Object.keys(constants).filter((k) => !(k in cellProps))];
+    for (const key of keys) {
       if (!this.shouldShowProperty(key)) continue;
 
-      // If datasetFeatures is provided and this property is 100% empty across the entire dataset, skip it
-      if (this.datasetFeatures.length > 0 && !this.nonEmptyPropsCache.has(key)) {
+      const isConstant = !(key in cellProps);
+      const rawValue: any = isConstant ? constants[key] : cellProps[key];
+
+      // Skip properties that are 100% empty across the entire dataset: for a per-cell property
+      // that is what nonEmptyPropsCache records, for a dataset-level constant it is its one value.
+      if (isConstant) {
+        if (this.isValueEmpty(rawValue)) continue;
+      } else if (this.datasetFeatures.length > 0 && !this.nonEmptyPropsCache.has(key)) {
         continue;
       }
 
-      const rawValue = (cell.properties as any)[key];
       const category = this.infoService.getCategoryForKey(key, rawValue);
       const item: PropertyGroupItem = {
         key,

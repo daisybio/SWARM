@@ -19,8 +19,8 @@ import { TranslationService } from '../translation.service';
 import { PathsService } from '../paths.service';
 import { DEFAULT_PATHS } from '../constants';
 import { InfoService } from '../info.service';
-import { GeneSymbolService } from '../gene-symbol.service';
-import { HexagonViewComponent, MapLegendInfo } from '../hexagon-view/hexagon-view.component';
+import { GeneSymbolService, matchGeneName, readCanonicalHeader } from '../gene-symbol.service';
+import { HexagonRenderContext, HexagonViewComponent, MapLegendInfo } from '../hexagon-view/hexagon-view.component';
 import { CellInfoPanelComponent } from '../cell-info-panel/cell-info-panel.component';
 import { ClusterInfoPanelComponent } from '../cluster-info-panel/cluster-info-panel.component';
 import { CoOccurrencePanelComponent } from '../co-occurrence-panel/co-occurrence-panel.component';
@@ -37,6 +37,7 @@ import { SpatialCorrelationPanelComponent } from '../spatial-correlation-panel/s
 import { LiveCorrelationDrawerComponent } from '../live-correlation-drawer/live-correlation-drawer.component';
 import { CellFeature } from '../hexagon-view/cell-feature.types';
 import { isSpatialOrIdentifierKey, isUninformativeAttribute } from '../attribute-filters';
+import { categoricalScale, ensurePaletteCovers } from '../categorical-palette';
 
 // Material
 import { MatButtonModule } from '@angular/material/button';
@@ -246,6 +247,17 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   // read by both the parent's updateHexColors and passed to HexagonViewComponent.renderHexagons) =======
   private fullFeatures: CellFeature[] = [];
   private isXenium = false;
+  /** Compare-side counterparts: all cells of the compare dataset (compareFeatures is the
+   * downsampled subset drawn on its base layer) and whether it is drawn downsampled + magnifier. */
+  private fullCompareFeatures: CellFeature[] = [];
+  private isXeniumCompare = false;
+  /**
+   * Compare mode extent handling. false (default): each map fits its own section, which is what
+   * two different sections need to be readable at all. true ("Same scale" button): both maps use
+   * the same microns-per-pixel, each centered on its own section, so section size/shape and cell
+   * density can be compared directly.
+   */
+  public compareSameScale = false;
 
 
   public selectedCell: CellFeature | null = null;
@@ -479,7 +491,6 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   public availableClusterIdsCompare: number[] = [];
 
   public currentDataSetSupportsCompare: boolean = true;
-  public isXeniumDatasetSelected: boolean = false;
 
   public colorableProperties: string[] = [
     'cell_type',
@@ -529,12 +540,15 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   public geneExpressionSharedFiltersCompare: { [col: string]: string } = {};
   public geneExpressionSharedSortStateCompare: { column: string | null; asc: boolean } = { column: null, asc: true };
   // Categorical scale for cell_type and other non-leiden categorical properties.
-  public colorScale = d3.scaleOrdinal<string>(d3.schemeSet2);
-  public leidenColorScale = d3.scaleOrdinal<string>(LEIDEN_CLUSTER_PALETTE);
+  // All four ordinal scales start with their original palette (Set2 / LEIDEN_CLUSTER_PALETTE) and
+  // continue with generated, mutually distinct colors instead of wrapping around -- see
+  // categorical-palette.ts.
+  public colorScale = categoricalScale(d3.schemeSet2);
+  public leidenColorScale = categoricalScale(LEIDEN_CLUSTER_PALETTE);
   public continuousColorScale = d3.scaleSequential(d3.interpolateYlOrRd).clamp(true);
   // Separate scales for the compare view to avoid cross-contamination
-  public colorScaleCompare = d3.scaleOrdinal<string>(d3.schemeSet2);
-  public leidenColorScaleCompare = d3.scaleOrdinal<string>(LEIDEN_CLUSTER_PALETTE);
+  public colorScaleCompare = categoricalScale(d3.schemeSet2);
+  public leidenColorScaleCompare = categoricalScale(LEIDEN_CLUSTER_PALETTE);
   // Yellow continuous color palette
   public continuousColorScaleCompare = d3.scaleSequential(d3.interpolateYlOrRd).clamp(true);
   public currentLegendDomain: any[] = [];
@@ -669,21 +683,6 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         this.selectedDataset = dataset;
         if (dataset) {
           const dsType = dataset?.dataset_type?.toLowerCase();
-          this.currentDataSetSupportsCompare = dsType !== 'xenium';
-
-          // Detect if Xenium dataset is selected
-          this.isXeniumDatasetSelected = dsType === 'xenium';
-
-          // Auto-disable compare mode if Xenium is selected
-          if (this.isXeniumDatasetSelected && this.compareMode) {
-            console.log('Xenium dataset selected - disabling comparison view');
-            // Setting compareMode false destroys the *ngIf-gated <app-hexagon-view> compare
-            // instance, which takes svg_compare/g_compare (now child-owned) with it — no manual
-            // DOM-clearing/field-nulling needed here anymore.
-            this.compareMode = false;
-            this.datasetService.selectDatasetCompare(null);
-          }
-
           this.dataPath = dataset.geojson_path || '';
           this.features = [];
           this.meta = {};
@@ -693,7 +692,6 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         } else {
           this.pathsService.updatePaths({ adataPath: undefined }, false);
           this.dataPath = '';
-          this.isXeniumDatasetSelected = false;
         }
       });
 
@@ -1426,12 +1424,6 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   public onCompareMode(): void {
-    // Prevent compare mode toggle if Xenium dataset is selected
-    if (this.isXeniumDatasetSelected) {
-      console.warn('Compare mode not supported for Xenium datasets');
-      return;
-    }
-
     this.compareMode = !this.compareMode;
 
     if (this.compareMode) {
@@ -1474,6 +1466,13 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       this.isLoadingCompare = false;
       this.datasetService.selectDatasetCompare(null);
       this.refreshSharedGeneExpressionDomain();
+
+      this.fullCompareFeatures = [];
+      this.isXeniumCompare = false;
+      // "Same scale" only applies while comparing: give the main map its own extent back.
+      if (this.compareSameScale) {
+        this.rerenderMapGeometry(false);
+      }
     }
   }
 
@@ -1693,11 +1692,11 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     console.log('[DEBUG] Loading GeoJSON from:', fullUrl, 'compare=', compare);
 
     // Use fetch instead of d3.json to handle credentials properly.
-    // cache: 'no-store' -- the geojson endpoint serves a FileResponse with no explicit
-    // Cache-Control header, so a plain reload can silently reuse a stale cached response
-    // (e.g. after the backend regenerates hexagons.geojson with new geometry) without any
-    // network request ever showing the change. Force a real fetch every time.
-    fetch(fullUrl, { credentials: 'include', cache: 'no-store' })
+    // Default cache mode on purpose (no 'no-store'): the geojson route now sends
+    // `Cache-Control: private, no-cache` with an ETag / Last-Modified, so the browser keeps its
+    // copy but always revalidates -- a regenerated hexagons.geojson changes the ETag and is
+    // fetched anew, an unchanged one is a cheap 304 instead of a full re-download.
+    fetch(fullUrl, { credentials: 'include' })
       .then(response => {
         if (!response.ok) {
           throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
@@ -1742,12 +1741,23 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         // Infer properties for coloring dropdown
         if (compare) {
           this.compareView?.createHexagonPlot();
-          this.compareFeatures = data.features;
+          // Xenium-size datasets are drawn downsampled in compare too (same rule as the main map),
+          // with the same magnifier (double-click; right-click / Esc closes) on all cells.
+          this.fullCompareFeatures = data.features;
+          this.isXeniumCompare = data.meta?.['data_type'] === 'xenium' || data.features.length > 50000;
+          this.compareFeatures = this.downsampleForDisplay(data.features, this.isXeniumCompare);
+          if (this.isXeniumCompare && this.compareView?.svg) {
+            (this.compareView.svg as any).on('dblclick.zoom', null);
+            this.compareView.initDetailWindow();
+            this.compareView.hideDetailWindow();
+            this.compareView.bindDetailWindowInteractions();
+          }
           // Early preview using whatever pathGenerator/settings a previous render already set up
           // (no-op on the very first-ever compare render, since compareView.currentPathGenerator
           // is only set by renderHexagons — this mirrors the original guard exactly). Superseded
           // moments later by the unified renderHexagons() call below regardless.
-          if (this.compareView?.g && this.compareView?.currentPathGenerator) {
+          // (Skipped for Xenium-type data: those cells belong in the base layer, not the root group.)
+          if (!this.isXeniumCompare && this.compareView?.g && this.compareView?.currentPathGenerator) {
             const pathGenerator = this.compareView.currentPathGenerator;
             this.compareView.g
               .style('cursor', 'pointer')
@@ -1780,6 +1790,10 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         } else {
           this.features = data.features;
         }
+
+        // New dataset (and, below, new meta that the leiden-centrality views read from):
+        // drop the memoized per-cell scans.
+        this.featureDataVersion++;
 
         if (data.meta) {
           // save all features for potential downsampling in Xenium datasets
@@ -2040,18 +2054,11 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
 
 
-        (compare ? this.compareView : this.mainView)?.renderHexagons({
-          features: compare ? this.compareFeatures : this.features,
-          isXenium: this.isXenium,
-          fullFeatures: this.fullFeatures,
-          selectedView: compare ? this.selectedCompareView : this.selectedView,
-          legendType: compare ? this.currentCompareLegendType : this.currentLegendType,
-          // Always the main view's ordinal scale — see HexagonRenderContext.colorScale doc.
-          colorScale: this.selectedView === 'leiden' ? this.leidenColorScale : this.colorScale,
-          continuousColorScale: compare ? this.continuousColorScaleCompare : this.continuousColorScale,
-          leidenClusterAnnotations: (compare ? this.metaCompare : this.meta)?.['leiden_cluster_annotations'],
-          leidenCentralityProps: this.leidenCentralityProps,
-        });
+        (compare ? this.compareView : this.mainView)?.renderHexagons(this.buildRenderContext(compare));
+        // With "same scale" the other map's scale depends on this dataset's extent too.
+        if (this.compareMode && this.compareSameScale) {
+          this.rerenderMapGeometry(!compare);
+        }
 
         this.onColorbyPropertyChange(compare);
         this.autoSelectDefaultCluster(compare);
@@ -2116,6 +2123,66 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
   private getSharedDomainForGeneExpressionView(): { min: number; max: number } | null {
     return this.sharedGeneExpressionDomain;
+  }
+
+  /**
+   * Every cell of one map, including those a Xenium-type map does not draw on its base layer.
+   * Bound as the gene-expression tables' [features] so their "Show" writes the values into all
+   * cells and the magnifier (which draws from the full set) shows them too. Returns the existing
+   * array (no copy), so it is safe in a template binding.
+   */
+  public allMapCells(compare: boolean): CellFeature[] {
+    if (compare) {
+      return this.isXeniumCompare && this.fullCompareFeatures.length ? this.fullCompareFeatures : this.compareFeatures;
+    }
+    return this.isXenium && this.fullFeatures.length ? this.fullFeatures : this.features;
+  }
+
+  /** Everything renderHexagons() needs for one side, from the current state. */
+  private buildRenderContext(compare: boolean): HexagonRenderContext {
+    const ownFull = compare ? this.fullCompareFeatures : this.fullFeatures;
+    const otherFull = compare ? this.fullFeatures : this.fullCompareFeatures;
+    return {
+      features: compare ? this.compareFeatures : this.features,
+      // Both sides: downsampled base layer + magnifier for Xenium-type datasets.
+      isXenium: compare ? this.isXeniumCompare : this.isXenium,
+      fullFeatures: ownFull,
+      selectedView: compare ? this.selectedCompareView : this.selectedView,
+      legendType: compare ? this.currentCompareLegendType : this.currentLegendType,
+      // Always the main view's ordinal scale — see HexagonRenderContext.colorScale doc.
+      colorScale: this.selectedView === 'leiden' ? this.leidenColorScale : this.colorScale,
+      continuousColorScale: compare ? this.continuousColorScaleCompare : this.continuousColorScale,
+      leidenClusterAnnotations: (compare ? this.metaCompare : this.meta)?.['leiden_cluster_annotations'],
+      leidenCentralityProps: this.leidenCentralityProps,
+      sharedScaleFeatures: this.compareMode && this.compareSameScale && otherFull.length ? otherFull : null,
+    };
+  }
+
+  /**
+   * Re-projects one map in place (same cells and colors, new geometry) -- used when the compare
+   * extent mode changes or the other map's dataset changes under "same scale". updateHexColors
+   * then reapplies the normalized color mapping and the magnifier, exactly as after a load.
+   */
+  private rerenderMapGeometry(compare: boolean): void {
+    const view = compare ? this.compareView : this.mainView;
+    const hasData = compare ? this.compareFeatures.length > 0 : this.features.length > 0;
+    if (!view?.g || !hasData || (compare && !this.compareMode)) return;
+    view.renderHexagons(this.buildRenderContext(compare));
+    this.updateHexColors(compare ? '#hexbin-compare' : '#hexbin');
+  }
+
+  /** "Same scale" toggle in compare mode (see compareSameScale). */
+  public toggleCompareSameScale(): void {
+    this.compareSameScale = !this.compareSameScale;
+    this.rerenderMapGeometry(false);
+    this.rerenderMapGeometry(true);
+  }
+
+  /** At most ~10k cells are drawn for Xenium-type / very large datasets (every n-th cell). */
+  private downsampleForDisplay(features: CellFeature[], isXeniumType: boolean): CellFeature[] {
+    if (!isXeniumType && features.length <= 50000) return features;
+    const step = Math.ceil(features.length / 10000);
+    return step > 1 ? features.filter((_, i) => i % step === 0) : features;
   }
 
   private cloneGeoJsonData(data: GeoJsonData | null): GeoJsonData | null {
@@ -2193,18 +2260,15 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       });
       return null;
     }
-    const result = {
-      min: Math.min(...values),
-      max: Math.max(...values),
-    };
-    console.log('[domain:getMinMaxForView] computed', {
-      view,
-      featureCount: features.length,
-      finiteCount: values.length,
-      min: result.min,
-      max: result.max,
-    });
-    return result;
+    // Plain loop rather than Math.min(...values): spreading a large array as call arguments
+    // throws a RangeError once the cell count exceeds the engine's argument limit.
+    let min = Infinity;
+    let max = -Infinity;
+    for (const v of values) {
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    return { min, max };
   }
 
   private getMergedMinMaxForView(view: string): { min: number; max: number } | null {
@@ -2274,6 +2338,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         results.forEach((result, idx) => {
           const req = pending[idx];
           if (result.status === 'fulfilled') {
+            this.geneSymbolService.noteCanonical(req.gene, result.value.canonical_gene);
             this.geneDomainCache.set(req.cacheKey, {
               min: result.value.global_min,
               max: result.value.global_max,
@@ -2437,6 +2502,21 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       ? features
       : (compare ? this.compareFeatures : this.features) || [];
 
+    // Memoized: this is reached from template bindings (isActiveCategorical, categoricalProperties,
+    // ...), i.e. on every change-detection pass, and scanning every cell each time cost ~150 ms per
+    // pass on a 24k-cell dataset. See featureDataVersion for when the cache is invalidated.
+    const cacheKey = `${compare ? 1 : 0}|${property}`;
+    const cached = this.continuousScaleCache.get(cacheKey);
+    if (cached && cached.features === sourceFeatures && cached.version === this.featureDataVersion) {
+      return cached.result;
+    }
+    const result = this.computeIsContinuousScale(property, sourceFeatures, compare);
+    this.continuousScaleCache.set(cacheKey, { features: sourceFeatures, version: this.featureDataVersion, result });
+    return result;
+  }
+
+  private computeIsContinuousScale(property: string, sourceFeatures: CellFeature[], compare: boolean): boolean {
+
     const valuesRaw = sourceFeatures.map((f) => {
       if (this.leidenCentralityProps.includes(property)) {
         const clusterAnnotation = this.getLeidenClusterAnnotation(f.properties.leiden, compare);
@@ -2474,13 +2554,36 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   public categoricalProperties(compare: boolean = false): string[] {
     const props = compare ? this.colorablePropertiesCompare : this.colorableProperties;
     const features = compare ? this.compareFeatures : this.features;
-    return props.filter(
+    // Memoized (bound in the template, so evaluated on every change-detection pass). Returning
+    // the same array instance also keeps the *ngFor over it from re-diffing each pass.
+    const cached = this.categoricalPropertiesCache[compare ? 1 : 0];
+    if (cached && cached.props === props && cached.features === features && cached.version === this.featureDataVersion) {
+      return cached.result;
+    }
+    const result = props.filter(
       (p) =>
         !this.isContinuousScale(p, undefined, compare) &&
         !isSpatialOrIdentifierKey(p) &&
         !isUninformativeAttribute(p, features),
     );
+    this.categoricalPropertiesCache[compare ? 1 : 0] = { props, features, version: this.featureDataVersion, result };
+    return result;
   }
+
+  /**
+   * Bumped whenever per-cell property values may have changed in place (every updateHexColors()
+   * call, which follows each fetch that writes new values onto the features). Together with the
+   * identity of the features array (replaced on every dataset load) this invalidates the
+   * memoized per-cell scans below.
+   */
+  private featureDataVersion = 0;
+  private continuousScaleCache = new Map<string, { features: CellFeature[]; version: number; result: boolean }>();
+  private categoricalPropertiesCache: Array<
+    { props: string[]; features: CellFeature[]; version: number; result: string[] } | undefined
+  > = [];
+  private activeClusterValuesCache: Array<
+    { view: string; features: CellFeature[]; version: number; result: (string | number)[] } | undefined
+  > = [];
 
   /** Distinct values of the currently active categorical property, for the "cluster" select
    * dropdown in the Cluster Information tab. For 'leiden' this reuses availableClusterIds
@@ -2492,12 +2595,20 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       return compare ? this.availableClusterIdsCompare : this.availableClusterIds;
     }
     const features = (compare ? this.compareFeatures : this.features) || [];
+    // Memoized: bound to an @Input() in the template, so a fresh array on every change-detection
+    // pass both rescanned every cell and re-triggered the child's ngOnChanges each time.
+    const cached = this.activeClusterValuesCache[compare ? 1 : 0];
+    if (cached && cached.view === view && cached.features === features && cached.version === this.featureDataVersion) {
+      return cached.result;
+    }
     const values = new Set<string | number>();
     features.forEach((f) => {
       const raw = f.properties?.[view] as string | number | undefined;
       if (raw !== undefined && raw !== null && raw !== '') values.add(raw);
     });
-    return Array.from(values).sort((a, b) => String(a).localeCompare(String(b)));
+    const result = Array.from(values).sort((a, b) => String(a).localeCompare(String(b)));
+    this.activeClusterValuesCache[compare ? 1 : 0] = { view, features, version: this.featureDataVersion, result };
+    return result;
   }
 
 
@@ -2565,6 +2676,10 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       containerName = '#hexbin';
     }
 
+    // Per-cell values may have just been rewritten in place (this is called after every fetch
+    // that does so) -- invalidate the memoized per-cell scans.
+    this.featureDataVersion++;
+
     // Determine which features and selected view to use
     const isMainView = containerName === '#hexbin';
     const features = isMainView ? this.features : this.compareFeatures;
@@ -2599,8 +2714,8 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     targetView?.setCurrentView(viewToUse, !this.isContinuousScale(viewToUse, features, !isMainView));
 
     const layerToColor = (
-      (containerName === '#hexbin' && this.isXenium)
-        ? this.mainView?.baseLayer
+      (isMainView ? this.isXenium : this.isXeniumCompare)
+        ? targetView?.baseLayer
         : viewVariablesToUpdate.g
     ) as unknown as d3.Selection<SVGGElement, any, any, any>;
 
@@ -2621,25 +2736,44 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     valuesRaw = features.map((f) => this.extractViewValue(f, viewToUse, !isMainView));
-    const numericValues = valuesRaw.map((v) => this.toNumber(v));
 
     // Determine if the property is continuous
     const isContinuous = this.isContinuousScale(viewToUse, features, !isMainView);
 
+    let fillOf: (d: CellFeature) => string;
+
     if (isContinuous) {
       const compareSharedDomain = this.getPairedContinuousDomainForCompare();
-      console.log('[updateHexColors] Computed compareSharedDomain:', compareSharedDomain);
       const sharedDomain = compareSharedDomain ?? (viewToUse === 'gene_expression'
         ? this.getSharedDomainForGeneExpressionView()
         : null);
 
-      let min = sharedDomain ? sharedDomain.min : Math.min(...numericValues);
-      let max = sharedDomain ? sharedDomain.max : Math.max(...numericValues);
+      // Min/max over the cells that actually have a value. Cells without one (null/'' -> NaN) are
+      // skipped: Math.min(...values) returned NaN as soon as a single value was missing, which
+      // made the domain fall back to [0, 1] and painted every real value (e.g. a depth of 91.6+)
+      // in the darkest color.
+      let min = Infinity;
+      let max = -Infinity;
+      if (sharedDomain) {
+        min = sharedDomain.min;
+        max = sharedDomain.max;
+      } else {
+        for (const raw of valuesRaw) {
+          const n = this.toNumber(raw);
+          if (!Number.isFinite(n)) continue;
+          if (n < min) min = n;
+          if (n > max) max = n;
+        }
+      }
 
       if (!Number.isFinite(min) || !Number.isFinite(max)) {
         min = 0;
         max = 1;
       }
+
+      // Legend shows the real value range of this view.
+      viewVariablesToUpdate.setLegendDomain([min, max]);
+      viewVariablesToUpdate.setLegendType('continuous');
 
       if (min === max) {
         const eps = min === 0 ? 1 : Math.abs(min) * 0.01;
@@ -2647,51 +2781,39 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         max += eps;
       }
 
-      // Always normalize to [0, 1] for consistent color usage across all views
-      this.continuousColorScale.domain([0, 1]);
-      this.continuousColorScaleCompare.domain([0, 1]);
+      // The scale itself stays on [0, 1] (the co-occurrence panel also feeds it normalized
+      // intensities); values are normalized to that range here.
       viewVariablesToUpdate.continuous.domain([0, 1]);
-
-      // Legend always shows [0, 1]
-      this.currentLegendDomain = [0, 1];
-      this.currentLegendDomainCompare = [0, 1];
-      this.currentLegendType = 'continuous';
-      this.currentCompareLegendType = 'continuous';
-      viewVariablesToUpdate.setLegendDomain([0, 1]);
-      viewVariablesToUpdate.setLegendType('continuous');
-
-      sel
-        .interrupt()
-        .attr('fill', (d) => {
-          const raw = this.extractViewValue(d, viewToUse, !isMainView);
-          const n = this.toNumber(raw);
-          return Number.isFinite(n)
-            ? viewVariablesToUpdate.continuous((n - min) / (max - min))
-            : '#ccc';
-        });
+      const continuous = viewVariablesToUpdate.continuous;
+      const span = max - min;
+      fillOf = (d) => {
+        const n = this.toNumber(this.extractViewValue(d, viewToUse, !isMainView));
+        return Number.isFinite(n) ? continuous((n - min) / span) : '#ccc';
+      };
     } else {
       // categorical scale
       const rawDomain = [...new Set(valuesRaw.map((v: any) => String(v)))];
       const domain = this.sortCategoriesMeaningfully(rawDomain);
 
-      viewVariablesToUpdate.ordinal.domain(domain);
+      const ordinal = viewVariablesToUpdate.ordinal;
+      // Never wrap around: grow the palette if this property has more categories than colors.
+      ensurePaletteCovers(ordinal, viewToUse === 'leiden' ? LEIDEN_CLUSTER_PALETTE : d3.schemeSet2, domain.length);
+      ordinal.domain(domain);
       viewVariablesToUpdate.setLegendDomain(domain);
       viewVariablesToUpdate.setLegendType('categorical');
 
-      sel
-        .interrupt()
-        .attr('fill', (d) => {
-          const raw = this.extractViewValue(d, viewToUse, !isMainView);
-          return viewVariablesToUpdate.ordinal(String(raw));
-        });
+      fillOf = (d) => ordinal(String(this.extractViewValue(d, viewToUse, !isMainView)));
     }
+
+    sel.interrupt().attr('fill', fillOf);
+    // The Xenium magnifier draws cells that are not in the downsampled base layer; give it the
+    // exact same value -> color mapping instead of its own (un-normalized) one.
+    targetView?.setFillAccessor(fillOf);
 
     this.syncClusterHighlight(!isMainView);
     targetView?.updateSelectionHighlight();
 
-    if (containerName === '#hexbin') {
-      this.mainView?.refreshDetailWindowIfVisible();
-    }
+    targetView?.refreshDetailWindowIfVisible();
     this.renderLegend(containerName);
 
   }
@@ -4272,7 +4394,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
     if (setPin) {
       const featId = isGeneExpression ? `gene_expression::${index}` : `obsm::${columnName}::${index}`;
-      const featName = isGeneExpression ? `Gene: ${index}` : `${index}`;
+      const featName = isGeneExpression ? `Gene: ${this.geneSymbolService.label(index)}` : `${index}`;
       if (compare) {
         this.lastActiveFeatureCompare = { id: featId, name: featName };
       } else {
@@ -4302,20 +4424,34 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       .callWithSession(() =>
         this.http.get(
           request,
-          { withCredentials: true },
+          { withCredentials: true, observe: 'response' },
         ),
       )
       .subscribe({
-        next: (res) => {
+        next: (response) => {
+          // Gene names are resolved case-insensitively by the backend; remember which one it
+          // used (display only -- `index` stays what is sent) and show that in the drawer's pin.
+          const canonical = readCanonicalHeader(response.headers);
+          if (isGeneExpression && canonical) {
+            this.geneSymbolService.noteCanonical(index, canonical);
+            const pinKey = compare ? 'lastActiveFeatureCompare' : 'lastActiveFeatureMain';
+            const pin = this[pinKey];
+            if (setPin && pin?.id === `gene_expression::${index}`) {
+              this[pinKey] = { id: pin.id, name: `Gene: ${this.geneSymbolService.label(index)}` };
+            }
+          }
           if (token !== this.requestTokens[tokenType]) {
             this.setMapLoading(false, compare);
             return;
           }
-          const data = res as { [barcode: string]: any };
+          const data = (response.body ?? {}) as { [barcode: string]: any };
 
           // 1. Update ONLY the main view if compare is false
           if (!compare && this.features) {
-            for (const feature of this.features) {
+            // Downsampled (Xenium) mode: this.features is only the subset drawn on the base
+            // layer -- write to every cell so the magnifier window shows the new values too.
+            const targets = this.isXenium && this.fullFeatures.length ? this.fullFeatures : this.features;
+            for (const feature of targets) {
               const barcode = feature.properties?.barcode;
               if (barcode && data[barcode] !== undefined) {
                 feature.properties[propertyToUpdate] = data[barcode];
@@ -4326,7 +4462,11 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
           // 2. Update ONLY the compare view if compare is true
           if (compare && this.compareMode && this.compareFeatures) {
-            for (const feature of this.compareFeatures) {
+            // Downsampled (Xenium) compare map: write to every cell, for its magnifier.
+            const compareTargets = this.isXeniumCompare && this.fullCompareFeatures.length
+              ? this.fullCompareFeatures
+              : this.compareFeatures;
+            for (const feature of compareTargets) {
               const barcode = feature.properties?.barcode;
               if (barcode && data[barcode] !== undefined) {
                 feature.properties[propertyToUpdate] = data[barcode];
@@ -4559,21 +4699,22 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     let legendInfo: MapLegendInfo | null = null;
 
     if (viewVariablesToUpdate.getLegendType() === 'continuous') {
+      // Legend domain = the real [min, max] of the values; the color scale itself runs on the
+      // normalized [0, 1] range (see updateHexColors).
       const [min, max] = (viewVariablesToUpdate.getLegendDomain() as number[]) || [0, 1];
       const numStops = 10;
       const stops: string[] = [];
       for (let i = 0; i <= numStops; i++) {
         const t = i / numStops;
-        const value = min + t * (max - min);
-        stops.push(`${viewVariablesToUpdate.continuous(value)} ${Math.round(t * 100)}%`);
+        stops.push(`${viewVariablesToUpdate.continuous(t)} ${Math.round(t * 100)}%`);
       }
       const gradientStops = `linear-gradient(to right, ${stops.join(', ')})`;
 
       legendInfo = {
         title: legendTitle,
         type: 'continuous',
-        minText: (min ?? 0).toFixed(2),
-        maxText: (max ?? 0).toFixed(2),
+        minText: this.formatLegendNumber(min ?? 0),
+        maxText: this.formatLegendNumber(max ?? 0),
         gradientStops,
       };
     } else {
@@ -4596,6 +4737,17 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     } else {
       this.compareLegendInfo = legendInfo;
     }
+  }
+
+  /** Two decimals for ordinary magnitudes; more precision for tiny values (which would otherwise
+   * all print as "0.00") and exponent notation for very large/small ones. */
+  private formatLegendNumber(v: number): string {
+    if (!Number.isFinite(v)) return String(v);
+    const abs = Math.abs(v);
+    if (abs === 0) return '0';
+    if (abs >= 1e6 || abs < 1e-4) return v.toExponential(2);
+    if (abs < 0.01) return v.toPrecision(2);
+    return v.toFixed(2);
   }
 
   /**
@@ -5564,6 +5716,12 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     return 'leiden';
   }
 
+  /** Display label for a gene name/id (symbol for Ensembl ids, the dataset's casing for re-cased
+   * lookups -- see GeneSymbolService.label); '' for nothing. */
+  public geneLabel(gene: string | null | undefined): string {
+    return gene ? this.geneSymbolService.label(gene) : '';
+  }
+
   public getActiveFeatureId(isCompare: boolean): { id: string; name: string } {
     const lastFeat = isCompare ? this.lastActiveFeatureCompare : this.lastActiveFeatureMain;
     if (lastFeat && lastFeat.id) {
@@ -5577,7 +5735,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     const tf = genie3Tf || spongeTf;
 
     if (view === 'gene_expression' && gene) {
-      return { id: `gene_expression::${gene}`, name: `Gene: ${gene}` };
+      return { id: `gene_expression::${gene}`, name: `Gene: ${this.geneSymbolService.label(gene)}` };
     }
     if ((view === 'tf_activity' || view === 'aucell_genie3' || view === 'aucell_sponge' || view === 'regulatory_scores') && tf) {
       return { id: `tf_activity::${tf}`, name: `TF: ${tf}` };
@@ -5641,11 +5799,14 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
           this.selectedView = 'gene_expression';
         }
       } else if (cat === 'tf_activity' && sym) {
+        // The target side's gene-set list may spell the TF differently (`Sox2` vs `sox2`): pick
+        // its own entry (exact match first) so the select and the network lookups find it.
+        const tf = matchGeneName(sym, isCompareTarget ? this.genie3ElementsCompare : this.genie3Elements) ?? sym;
         if (isCompareTarget) {
-          this.selectedGeneSetGenie3Compare = sym;
+          this.selectedGeneSetGenie3Compare = tf;
           this.selectedCompareView = 'tf_activity';
         } else {
-          this.selectedGeneSetGenie3 = sym;
+          this.selectedGeneSetGenie3 = tf;
           this.selectedView = 'tf_activity';
         }
       } else {
@@ -5737,8 +5898,10 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         const allY: number[] = coords?.y || [];
         if (allX.length === 0 || allY.length === 0) return;
 
-        const minX = Math.min(...allX), maxX = Math.max(...allX);
-        const minY = Math.min(...allY), maxY = Math.max(...allY);
+        // d3.extent rather than Math.min(...all): spreading every cell as call arguments throws
+        // once the cell count exceeds the engine's argument limit.
+        const [minX, maxX] = d3.extent(allX) as [number, number];
+        const [minY, maxY] = d3.extent(allY) as [number, number];
 
         this.mainView?.resetClusterExtension();
         this.mainView?.setCurrentView('bivariate_overlay', false);
@@ -5835,6 +5998,8 @@ interface TableData {
 
 interface GeneStatsResponse {
   gene: string;
+  /** The name the backend resolved `gene` to (case-insensitive lookup); absent on older backends. */
+  canonical_gene?: string;
   dataset_ids: string[];
   global_min: number;
   global_max: number;

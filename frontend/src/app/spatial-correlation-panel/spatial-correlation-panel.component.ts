@@ -9,6 +9,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import * as Plotly from 'plotly.js-dist-min';
 import * as d3 from 'd3';
+import { extendedPalette } from '../categorical-palette';
+import { describeApiError } from '../api-error';
 import { CellFeature } from '../hexagon-view/cell-feature.types';
 
 export interface SpatialFeature {
@@ -88,6 +90,7 @@ export class SpatialCorrelationPanelComponent implements OnInit, OnChanges {
   metricMode: 'pearson' | 'moran' = 'pearson';
   isLoadingMatrix = false;
   matrixData: any = null;
+  matrixError = '';
   features: SpatialFeature[] = [];
 
   selectedPairIndices: { i: number; j: number } | null = null;
@@ -115,6 +118,7 @@ export class SpatialCorrelationPanelComponent implements OnInit, OnChanges {
   loadCorrelationMatrix(): void {
     if (!this.datasetId) return;
     this.isLoadingMatrix = true;
+    this.matrixError = '';
     this.matrixData = null;
     this.selectedPairIndices = null;
     this.pairScatterData = null;
@@ -129,6 +133,7 @@ export class SpatialCorrelationPanelComponent implements OnInit, OnChanges {
         },
         error: (err) => {
           console.error('Failed to load spatial correlation matrix:', err);
+          this.matrixError = describeApiError(err, "Can't compute the correlation matrix for this dataset");
           this.isLoadingMatrix = false;
         }
       });
@@ -162,8 +167,9 @@ export class SpatialCorrelationPanelComponent implements OnInit, OnChanges {
         const metricName = this.metricMode === 'pearson' ? 'Pearson r' : "Bivariate Moran's I";
         row.push(
           `<b>${yNames[i]}</b> vs <b>${xNames[j]}</b><br>` +
-          `${metricName}: <b>${typeof val === 'number' ? val.toFixed(3) : val}</b><br>` +
-          `Status: <i>${circ?.reason || 'Independent'}</i>`
+          `${metricName}: <b>${typeof val === 'number' ? val.toFixed(3) : val}</b>` +
+          // Only warn about detected dependencies; never assert independence (heuristic check).
+          (circ?.is_dependent ? `<br>Warning: <i>${circ.reason || 'Direct dependency'}</i>` : '')
         );
       }
       hoverText.push(row);
@@ -266,9 +272,9 @@ export class SpatialCorrelationPanelComponent implements OnInit, OnChanges {
       },
       error: (err) => {
         console.error('Failed to load scatter data:', err);
-        // Deliberately generic and always the same, regardless of the backend's actual detail --
-        // that can be a raw, unfiltered exception message, not something meant for a user to read.
-        this.scatterError = "Can't correlate the selected pair";
+        // The backend's structured reason when it sent one; 5xx and unrecognised errors keep the
+        // generic text, since their detail can be a raw exception message (see api-error.ts).
+        this.scatterError = describeApiError(err, "Can't correlate the selected pair");
         this.isLoadingScatter = false;
       }
     });
@@ -297,11 +303,12 @@ export class SpatialCorrelationPanelComponent implements OnInit, OnChanges {
       `<i>Click to highlight on map</i>`
     );
 
-    const colorPalette = d3.schemeCategory10;
-    const markerColors = data.map(d => {
-      const cNum = parseInt(d.cluster, 10);
-      return !isNaN(cNum) ? colorPalette[cNum % 10] : '#1976d2';
-    });
+    // Category10 first, then generated colors (extendedPalette), so cluster ids >= 10 no longer
+    // wrap around onto the colors of clusters 0-9.
+    const clusterNums = data.map(d => parseInt(d.cluster, 10));
+    const maxCluster = clusterNums.reduce((m, c) => (!isNaN(c) && c > m ? c : m), 0);
+    const colorPalette = extendedPalette(d3.schemeCategory10, maxCluster + 1);
+    const markerColors = clusterNums.map(cNum => (!isNaN(cNum) && cNum >= 0 ? colorPalette[cNum] : '#1976d2'));
 
     const traces: Partial<Plotly.PlotData>[] = [
       {

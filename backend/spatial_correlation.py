@@ -23,6 +23,8 @@ import pandas as pd
 from scipy import sparse, stats
 import scanpy as sc
 
+from gene_lookup import GeneLookupError, resolve_gene
+
 # Default k for spatial k-nearest neighbors in Bivariate Moran's I
 DEFAULT_SPATIAL_KNN = 6
 
@@ -146,12 +148,50 @@ def is_reserved_tab_key(key: str) -> bool:
     return False
 
 
-def _extract_vector(matrix: Any, index: int) -> np.ndarray:
-    """Extract 1D dense float array from sparse matrix or numpy array at given index."""
+class CorrelationError(Exception):
+    """A correlation request that cannot be answered. `code` is a stable machine-readable
+    identifier, `message` is for people, `status` is the HTTP status the route should use.
+
+    Codes: gene_not_found, gene_ambiguous (409), feature_table_not_found, feature_column_not_found,
+    feature_not_found (all 404); feature_not_numeric, feature_constant, feature_all_missing,
+    too_few_observations, no_shared_cells (all 422)."""
+
+    def __init__(self, code: str, message: str, status: int = 422, **details: Any):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.status = status
+        self.details = {k: v for k, v in details.items() if v is not None}
+
+    def to_body(self) -> Dict[str, Any]:
+        # "detail" (a string) keeps clients that read FastAPI's usual error shape working.
+        return {"detail": self.message, "error": {"code": self.code, "message": self.message, **self.details}}
+
+
+def _gene_error(err: GeneLookupError) -> CorrelationError:
+    status = 409 if err.code == "gene_ambiguous" else 404
+    return CorrelationError(err.code, err.message, status, gene=err.gene, candidates=err.candidates)
+
+
+def _extract_raw(matrix: Any, index: int) -> np.ndarray:
+    """Extract 1D float array (NaN / inf kept, so missing data can be told from zeros)."""
     if sparse.issparse(matrix):
         vec = matrix[:, index].toarray().ravel()
     else:
         vec = np.asarray(matrix[:, index]).ravel()
+    return vec
+
+
+def _is_all_missing(vec: np.ndarray) -> bool:
+    return vec.dtype.kind == "f" and len(vec) > 0 and not np.isfinite(vec).any()
+
+
+def _extract_vector(matrix: Any, index: int, missing: Optional[List[bool]] = None) -> np.ndarray:
+    """Extract 1D dense float array from sparse matrix or numpy array at given index.
+    NaN/inf become 0.0; if `missing` is a list, whether the column was entirely NaN is appended."""
+    vec = _extract_raw(matrix, index)
+    if missing is not None:
+        missing.append(_is_all_missing(vec))
     return np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0)
 
 
@@ -284,7 +324,7 @@ def extract_all_score_features(adata: sc.AnnData) -> Dict[str, Dict[str, Any]]:
     return features
 
 
-def get_feature_vector(adata: sc.AnnData, feature_info: Dict[str, Any]) -> np.ndarray:
+def get_feature_vector(adata: sc.AnnData, feature_info: Dict[str, Any], missing: Optional[List[bool]] = None) -> np.ndarray:
     """Retrieves the 1D numeric vector for a given feature_info dict from AnnData."""
     if "obsm_key" in feature_info:
         obsm_data = adata.obsm[feature_info["obsm_key"]]
@@ -292,10 +332,12 @@ def get_feature_vector(adata: sc.AnnData, feature_info: Dict[str, Any]) -> np.nd
             matrix = obsm_data.values
         else:
             matrix = obsm_data
-        return _extract_vector(matrix, feature_info["col_idx"])
+        return _extract_vector(matrix, feature_info["col_idx"], missing)
     elif "obs_col" in feature_info:
-        vec = pd.to_numeric(adata.obs[feature_info["obs_col"]], errors='coerce').fillna(0.0).values.astype(float)
-        return np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0)
+        raw = pd.to_numeric(adata.obs[feature_info["obs_col"]], errors='coerce').values.astype(float)
+        if missing is not None:
+            missing.append(_is_all_missing(raw))
+        return np.nan_to_num(raw, nan=0.0, posinf=0.0, neginf=0.0)
     else:
         return np.zeros(adata.n_obs, dtype=float)
 
@@ -455,7 +497,7 @@ def compute_spatial_correlation_matrix(adata: sc.AnnData) -> Dict[str, Any]:
     }
 
 
-def extract_obsm_vector(adata: sc.AnnData, obsm_key: str, col_identifier: Any) -> Optional[np.ndarray]:
+def extract_obsm_vector(adata: sc.AnnData, obsm_key: str, col_identifier: Any, missing: Optional[List[bool]] = None) -> Optional[np.ndarray]:
     if obsm_key not in adata.obsm:
         return None
     obsm_data = adata.obsm[obsm_key]
@@ -476,7 +518,7 @@ def extract_obsm_vector(adata: sc.AnnData, obsm_key: str, col_identifier: Any) -
             colnames = [str(i) for i in range(matrix.shape[1])]
 
     def _extract_if_numeric(idx: int) -> Optional[np.ndarray]:
-        vec = _extract_vector(matrix, idx)
+        vec = _extract_vector(matrix, idx, missing)
         # A non-numeric obsm column (e.g. a categorical similarity/classification label like
         # "cell_comp_tf_activity_category") comes back here as an object/string array rather than
         # raising -- np.nan_to_num silently passes it through -- and only fails much later with a
@@ -501,12 +543,60 @@ def extract_obsm_vector(adata: sc.AnnData, obsm_key: str, col_identifier: Any) -
     return None
 
 
+def _find_gene(adata: sc.AnnData, gene: str) -> Optional[Tuple[str, Any, int]]:
+    """Locates `gene` with the shared lookup (gene_lookup.resolve_gene: exact var_name, unique
+    case-insensitive var_name, unique case-insensitive var['symbol'], Ensembl id), in adata.var_names
+    and then adata.raw.var_names. Returns (canonical name, expression matrix, column index), or None
+    if the gene is in neither. Raises GeneLookupError when the name is ambiguous."""
+    try:
+        match, source = resolve_gene(adata, gene, include_raw=True, suggest=False)
+    except GeneLookupError as err:
+        if err.code == "gene_not_found":
+            return None
+        raise
+    return match.canonical, (adata.X if source == "X" else adata.raw.X), match.index
+
+
+def _not_found_error(adata: sc.AnnData, feature_id: str, category: str, symbol: str, sub_col: Optional[str], gene_err: Optional[GeneLookupError]) -> CorrelationError:
+    """The most specific error for a feature id that nothing resolved."""
+    if gene_err is not None:
+        return _gene_error(gene_err)
+    if category == "obsm" or category in adata.obsm:
+        table = symbol if category == "obsm" else category
+        column = sub_col if category == "obsm" else symbol
+        if table not in adata.obsm:
+            return CorrelationError(
+                "feature_table_not_found", f"Feature table '{table}' does not exist in this dataset.", 404,
+                table=table, feature_id=feature_id,
+            )
+        return CorrelationError(
+            "feature_column_not_found", f"Column '{column}' does not exist in feature table '{table}'.", 404,
+            table=table, column=column, feature_id=feature_id,
+        )
+    if category in ("obs", "obs_metadata"):
+        return CorrelationError(
+            "feature_column_not_found", f"Column '{symbol}' does not exist in the cell metadata (obs).", 404,
+            table="obs", column=symbol, feature_id=feature_id,
+        )
+    if "::" not in feature_id:
+        # A bare name that is neither a metadata column nor a score column: most likely a gene
+        try:
+            resolve_gene(adata, symbol, include_raw=True)
+        except GeneLookupError as err:
+            return _gene_error(err)
+    return CorrelationError("feature_not_found", f"Feature '{feature_id}' not found in dataset.", 404, feature_id=feature_id)
+
+
 def resolve_feature_or_dynamic(adata: sc.AnnData, feature_id: str, all_features: Dict[str, Any]) -> Tuple[Dict[str, Any], np.ndarray]:
+    """Resolves a feature id to (feature info, vector). Raises CorrelationError for anything that
+    cannot be resolved; info["all_missing"] is True when the source column held no finite value
+    (the vector is then all zeros)."""
+    missing: List[bool] = []
     if feature_id in all_features:
         feat = all_features[feature_id]
-        vec = get_feature_vector(adata, feat)
+        vec = get_feature_vector(adata, feat, missing)
         if np.std(vec) > 0 or len(vec) > 0:
-            return feat, vec
+            return {**feat, "all_missing": bool(missing and missing[-1])}, vec
 
     parts = feature_id.split("::")
     category = parts[0]
@@ -517,34 +607,54 @@ def resolve_feature_or_dynamic(adata: sc.AnnData, feature_id: str, all_features:
     if (category == "obsm" or category in adata.obsm) and (sub_col or symbol):
         ob_key = symbol if category == "obsm" else category
         col_target = sub_col if category == "obsm" else symbol
-        vec = extract_obsm_vector(adata, ob_key, col_target)
+        vec = extract_obsm_vector(adata, ob_key, col_target, missing)
         if vec is not None:
             feat = {
                 "id": feature_id,
                 "name": f"{ob_key.replace('_', ' ').title()}: {col_target}",
                 "category": category,
                 "symbol": str(col_target).upper(),
-                "obsm_key": ob_key
+                "obsm_key": ob_key,
+                "all_missing": bool(missing and missing[-1]),
             }
             return feat, vec
+        missing.clear()
+        # An obsm column that exists but is not numeric (a label table) is not a gene either
+        if ob_key in adata.obsm and extract_obsm_vector_present(adata, ob_key, col_target):
+            raise CorrelationError(
+                "feature_not_numeric", f"'{col_target}' in feature table '{ob_key}' holds labels, not numeric values.", 422,
+                table=ob_key, column=str(col_target), feature_id=feature_id,
+            )
 
     # 2. Dynamic Gene Expression
-    if category == "gene_expression" or symbol in adata.var_names:
-        gene = symbol
-        if gene in adata.var_names:
-            idx = adata.var_names.get_loc(gene)
-            vec = _extract_vector(adata.X, idx)
-        elif hasattr(adata, 'raw') and adata.raw is not None and gene in adata.raw.var_names:
-            idx = adata.raw.var_names.get_loc(gene)
-            vec = _extract_vector(adata.raw.X, idx)
-        else:
-            vec = np.zeros(adata.n_obs, dtype=float)
+    # Gene names go through the shared lookup (gene_lookup.py): datasets differ in casing convention
+    # (a mapped dataset may store `gfap` where its dissociated counterpart has `GFAP`), and the drawer
+    # sends whatever casing the gene was picked with -- often from the *other* dataset in compare
+    # mode -- or an Ensembl id.
+    gene_err: Optional[GeneLookupError] = None
+    try:
+        gene_source = _find_gene(adata, symbol)
+    except GeneLookupError as err:
+        gene_source, gene_err = None, err
+    if category == "gene_expression" and gene_source is None:
+        # Never fall back to an all-zero vector here: that is indistinguishable from a real,
+        # unexpressed gene and yields a plausible-looking (flat, r = 0) result.
+        if gene_err is not None:
+            raise _gene_error(gene_err)
+        try:
+            resolve_gene(adata, symbol, include_raw=True)
+        except GeneLookupError as err:
+            raise _gene_error(err)
+    if gene_source is not None:
+        gene, matrix, idx = gene_source
+        vec = _extract_vector(matrix, idx, missing)
 
         feat = {
             "id": feature_id,
             "name": f"Gene: {gene}",
             "category": "gene_expression",
-            "symbol": gene.upper()
+            "symbol": gene.upper(),
+            "all_missing": bool(missing and missing[-1]),
         }
         return feat, vec
 
@@ -556,48 +666,45 @@ def resolve_feature_or_dynamic(adata: sc.AnnData, feature_id: str, all_features:
     # the user has picked a real one from a table) is whatever's currently colored on the map,
     # which is leiden/cell_type on first load -- so this path used to be reached on every fresh
     # drawer open, correlating against fabricated zeros instead of surfacing "pick a feature".
+    def _obs_feature() -> Tuple[Dict[str, Any], np.ndarray]:
+        raw = pd.to_numeric(adata.obs[symbol], errors='coerce').values.astype(float)
+        feat = {
+            "id": feature_id,
+            "name": f"Obs: {symbol.replace('_', ' ').title()}",
+            "category": "obs_metadata",
+            "symbol": symbol.upper(),
+            "all_missing": _is_all_missing(raw),
+        }
+        return feat, np.nan_to_num(raw, nan=0.0, posinf=0.0, neginf=0.0)
+
     if (
         (category == "obs" or category == "obs_metadata")
         and symbol in adata.obs.columns
         and pd.api.types.is_numeric_dtype(adata.obs[symbol])
     ):
-        vec = pd.to_numeric(adata.obs[symbol], errors='coerce').fillna(0.0).values.astype(float)
-        vec = np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0)
-        feat = {
-            "id": feature_id,
-            "name": f"Obs: {symbol.replace('_', ' ').title()}",
-            "category": "obs_metadata",
-            "symbol": symbol.upper()
-        }
-        return feat, vec
+        return _obs_feature()
 
     # 4. Search ALL obsm matrices in adata for symbol or sub_col
     search_target = sub_col or symbol
     for ob_key in adata.obsm.keys():
         if ob_key in ['spatial', 'spatial_grid', 'X_umap', 'X_pca', 'X_tsne', 'X_diffmap']:
             continue
-        vec = extract_obsm_vector(adata, ob_key, search_target)
+        missing.clear()
+        vec = extract_obsm_vector(adata, ob_key, search_target, missing)
         if vec is not None and np.std(vec) > 0:
             feat = {
                 "id": feature_id,
                 "name": f"{ob_key.replace('_', ' ').title()}: {search_target}",
                 "category": ob_key,
                 "symbol": str(search_target).upper(),
-                "obsm_key": ob_key
+                "obsm_key": ob_key,
+                "all_missing": bool(missing and missing[-1]),
             }
             return feat, vec
 
     # 5. Search obs columns as fallback
     if symbol in adata.obs.columns and pd.api.types.is_numeric_dtype(adata.obs[symbol]):
-        vec = pd.to_numeric(adata.obs[symbol], errors='coerce').fillna(0.0).values.astype(float)
-        vec = np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0)
-        feat = {
-            "id": feature_id,
-            "name": f"Obs: {symbol.replace('_', ' ').title()}",
-            "category": "obs_metadata",
-            "symbol": symbol.upper()
-        }
-        return feat, vec
+        return _obs_feature()
 
     # Nothing numeric matched this id. Note this can legitimately happen for a categorical column
     # that *does* exist (leiden, cell_type, ...) -- steps 3/5 above deliberately skip those rather
@@ -605,11 +712,46 @@ def resolve_feature_or_dynamic(adata: sc.AnnData, feature_id: str, all_features:
     # one, so the caller gets a clear error instead of a scatterplot that looks like real (flat)
     # data.
     if symbol in adata.obs.columns:
-        raise ValueError(
+        raise CorrelationError(
+            "feature_not_numeric",
             f"'{symbol}' is a categorical label (e.g. cluster/cell type), not a numeric "
-            f"score -- pick a specific gene or score to correlate instead."
+            f"score -- pick a specific gene or score to correlate instead.",
+            422, table="obs", column=symbol, feature_id=feature_id,
         )
-    raise ValueError(f"Feature '{feature_id}' not found in dataset")
+    raise _not_found_error(adata, feature_id, category, symbol, sub_col, gene_err)
+
+
+def extract_obsm_vector_present(adata: sc.AnnData, obsm_key: str, col_identifier: Any) -> bool:
+    """Whether obsm[obsm_key] has a column called `col_identifier` (numeric or not)."""
+    obsm_data = adata.obsm[obsm_key]
+    if isinstance(obsm_data, pd.DataFrame):
+        cols = [str(c).strip().lower() for c in obsm_data.columns]
+    elif f"{obsm_key}_colnames" in adata.uns:
+        cols = [str(c).strip().lower() for c in adata.uns[f"{obsm_key}_colnames"]]
+    elif f"{obsm_key}_names" in adata.uns:
+        cols = [str(c).strip().lower() for c in adata.uns[f"{obsm_key}_names"]]
+    else:
+        return False
+    return str(col_identifier).strip().lower() in cols
+
+
+# Pearson needs at least 3 points; fewer is not a correlation
+MIN_OBSERVATIONS = 3
+
+
+def _canonical_name(feat: Dict[str, Any]) -> str:
+    name = feat["name"]
+    return name.split(": ", 1)[1] if feat.get("category") == "gene_expression" and ": " in name else name
+
+
+def _resolve_side(adata: sc.AnnData, feature_id: str, all_features: Dict[str, Any], side: str):
+    """resolve_feature_or_dynamic, tagging a CorrelationError with which side ("a"/"b") failed."""
+    try:
+        return resolve_feature_or_dynamic(adata, feature_id, all_features)
+    except CorrelationError as err:
+        err.details.setdefault("side", side)
+        err.details.setdefault("feature_id", feature_id)
+        raise
 
 
 def get_pair_scatter_data(
@@ -639,11 +781,8 @@ def get_pair_scatter_data(
     # and returns both the feat dict AND the already-extracted vector. Do NOT re-call
     # get_feature_vector afterwards — that only handles obsm_key/obs_col and would return zeros
     # for any dynamically-resolved feature (e.g. obs::ligand_receptor_relationships).
-    feat_a, vec_a_full = resolve_feature_or_dynamic(adata, feature_id_a, all_features_a)
-    feat_b, vec_b_full = resolve_feature_or_dynamic(adata_b, feature_id_b, all_features_b)
-
-    if not feat_a or not feat_b:
-        raise ValueError(f"One or both features ({feature_id_a}, {feature_id_b}) not found in dataset")
+    feat_a, vec_a_full = _resolve_side(adata, feature_id_a, all_features_a, "a")
+    feat_b, vec_b_full = _resolve_side(adata_b, feature_id_b, all_features_b, "b")
 
     if same_dataset:
         common_ids = list(adata.obs_names)
@@ -656,16 +795,37 @@ def get_pair_scatter_data(
         names_b = pd.Index(adata_b.obs_names)
         common_ids = names_a.intersection(names_b)
         if len(common_ids) == 0:
-            raise ValueError(
+            raise CorrelationError(
+                "no_shared_cells",
                 "The main and compare datasets don't share any cells/spots to correlate -- "
                 "cross-dataset correlation only works between two views of the same underlying "
-                "tissue (e.g. Tangram-mapped vs. real-spatial)."
+                "tissue (e.g. Tangram-mapped vs. real-spatial).",
+                422,
             )
         idx_a = names_a.get_indexer(common_ids)
         idx_b = names_b.get_indexer(common_ids)
         vec_a, vec_b = vec_a_full[idx_a], vec_b_full[idx_b]
         spatial_coords = adata.obsm['spatial'][idx_a] if 'spatial' in adata.obsm else None
         cluster_source, cluster_idx = adata, idx_a
+
+    if len(vec_a) < MIN_OBSERVATIONS:
+        raise CorrelationError(
+            "too_few_observations",
+            f"Only {len(vec_a)} overlapping observation(s); at least {MIN_OBSERVATIONS} are needed to correlate.",
+            422, n_observations=int(len(vec_a)), min_observations=MIN_OBSERVATIONS,
+        )
+    for side, feat, vec in (("a", feat_a, vec_a), ("b", feat_b, vec_b)):
+        if feat.get("all_missing"):
+            raise CorrelationError(
+                "feature_all_missing", f"Feature '{feat['name']}' has no values (all missing) in this dataset.", 422,
+                side=side, feature_id=feat["id"], name=feat["name"],
+            )
+        if not np.std(vec) > 0:
+            raise CorrelationError(
+                "feature_constant",
+                f"Feature '{feat['name']}' is constant over the compared observations (no variance), so it cannot be correlated.",
+                422, side=side, feature_id=feat["id"], name=feat["name"],
+            )
 
     if np.std(vec_a) > 0 and np.std(vec_b) > 0:
         r, p_val = stats.pearsonr(vec_a, vec_b)
@@ -715,8 +875,9 @@ def get_pair_scatter_data(
     }
 
     return {
-        "feature_a": {"id": feat_a["id"], "name": feat_a["name"], "category": feat_a["category"]},
-        "feature_b": {"id": feat_b["id"], "name": feat_b["name"], "category": feat_b["category"]},
+        # canonical_name: the one casing to display (genes: var['symbol'] when the dataset has it)
+        "feature_a": {"id": feat_a["id"], "name": feat_a["name"], "category": feat_a["category"], "canonical_name": _canonical_name(feat_a)},
+        "feature_b": {"id": feat_b["id"], "name": feat_b["name"], "category": feat_b["category"], "canonical_name": _canonical_name(feat_b)},
         "stats": {
             "pearson_r": float(r),
             "pearson_p": float(p_val),

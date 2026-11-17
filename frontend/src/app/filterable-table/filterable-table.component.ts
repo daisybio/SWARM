@@ -1,4 +1,5 @@
-import { Component, OnInit, Input, Output, EventEmitter, OnChanges, SimpleChanges, ElementRef } from '@angular/core';
+import { isMissingValue } from '../attribute-filters';
+import { Component, OnInit, Input, Output, EventEmitter, OnChanges, SimpleChanges, ElementRef, Inject, Optional } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { SessionService } from '../session.service';
@@ -9,7 +10,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { InfoService } from '../info.service';
-import { GeneSymbolService } from '../gene-symbol.service';
+import { GeneSymbolService, readCanonicalHeader } from '../gene-symbol.service';
+import { applyCellValues, BarcodeValueMap, CELL_VALUE_SINK, CellValueSink } from '../cell-values';
 
 @Component({
   selector: 'app-table',
@@ -64,7 +66,21 @@ export class FilterableTableComponent implements OnInit, OnChanges {
     private el: ElementRef,
     public infoService: InfoService,
     private geneSymbols: GeneSymbolService,
+    /** The map owner (HexagonPlotComponent), when this table lives inside it: fetched values go
+     * through it so they reach every cell of the side, not just the bound (drawn) subset. */
+    @Optional() @Inject(CELL_VALUE_SINK) private cellValueSink: CellValueSink | null,
   ) { }
+
+  /** Writes a fetched per-cell feature (or, with null, "missing" everywhere) into this side's
+   * cells -- via the map owner when there is one, else into the bound `features`. */
+  private writeCellValues(data: BarcodeValueMap | null): void {
+    if (!this.updateColumn) return;
+    if (this.cellValueSink) {
+      this.cellValueSink.applyFetchedValues(this.isCompare, this.updateColumn, data);
+    } else if (Array.isArray(this.features)) {
+      applyCellValues(this.features, this.updateColumn, data);
+    }
+  }
 
   columns: string[] = [];
   rows: any[] = [];
@@ -233,7 +249,9 @@ export class FilterableTableComponent implements OnInit, OnChanges {
    */
   displayIndex(value: any): string {
     if (typeof value !== 'string') return value;
-    return this.geneSymbols.symbolFor(value) ?? this.truncateMiddle(value);
+    // canonicalCase: one casing for gene names some tables store lower-case (`lamp5`), when the
+    // symbol map or an earlier lookup tells us the dataset's own spelling (never invented).
+    return this.geneSymbols.symbolFor(value) ?? this.geneSymbols.canonicalCase(value) ?? this.truncateMiddle(value);
   }
 
   /**
@@ -242,7 +260,7 @@ export class FilterableTableComponent implements OnInit, OnChanges {
    */
   indexTitle(value: any): string {
     if (typeof value !== 'string') return String(value ?? '');
-    const symbol = this.geneSymbols.symbolFor(value);
+    const symbol = this.geneSymbols.symbolFor(value) ?? this.geneSymbols.canonicalCase(value);
     return symbol ? `${symbol} — ${value}` : value;
   }
 
@@ -299,13 +317,13 @@ export class FilterableTableComponent implements OnInit, OnChanges {
       if (this.filters[col]) {
         // The index column is filtered on what the user can actually see as well as on the raw
         // value: typing "TP53" has to find a row rendered as TP53 even though it is stored (and
-        // still matchable) as ENSG00000141510.
+        // still matchable) as ENSG00000141510. Case-insensitive throughout (`LAMP5` finds `lamp5`).
         const matchesQuery =
           col === 'index'
             ? (row: any) => this.geneSymbols.matches(row[col], this.filters[col])
             : (row: any) =>
               typeof row[col] === 'string' &&
-              row[col].toLowerCase().includes(this.filters[col].toLowerCase());
+              row[col].toLowerCase().includes(this.filters[col].trim().toLowerCase());
         result = result.filter(matchesQuery);
       }
     }
@@ -317,6 +335,12 @@ export class FilterableTableComponent implements OnInit, OnChanges {
       result.sort((a, b) => {
         const valA = a[sortKey];
         const valB = b[sortKey];
+
+        // Missing values (NaN, null, "nan", ...) never take part in the ordering: always last,
+        // whichever direction is sorted.
+        const missA = isMissingValue(valA);
+        const missB = isMissingValue(valB);
+        if (missA || missB) return missA === missB ? 0 : (missA ? 1 : -1);
 
         if (typeof valA === 'number' && typeof valB === 'number') {
           return asc ? valA - valB : valB - valA;
@@ -400,6 +424,8 @@ export class FilterableTableComponent implements OnInit, OnChanges {
   //     });
   // }
 
+  private fetchSeq = 0;
+
   async fetchAndUpdate(columnName: string, index: string) {
     const isGeneExpression = columnName === 'gene_expression';
     const isChromvar = columnName === 'chromvar_spot_scores';
@@ -414,21 +440,23 @@ export class FilterableTableComponent implements OnInit, OnChanges {
         : `${this.sessionService.apiUrl}/obsm/${encodeURIComponent(columnName)}/${safeIndex}${datasetQuery}`;
 
     this.loadingChange.emit({ loading: true, isCompare: this.isCompare });
+    // Only the latest "Show" of this table may write: an earlier, slower response must not
+    // overwrite the feature the user picked after it.
+    const seq = ++this.fetchSeq;
 
     this.sessionService
-      .callWithSession(() => this.http.get(request, { withCredentials: true }))
+      .callWithSession(() => this.http.get(request, { withCredentials: true, observe: 'response' }))
       .subscribe({
-        next: (res) => {
-          const data = res as { [barcode: string]: any };
-
-          if (this.features) {
-            for (const feature of this.features) {
-              const barcode = feature.properties?.barcode;
-              if (barcode && data[barcode] !== undefined) {
-                feature.properties[this.updateColumn] = data[barcode];
-              }
-            }
+        next: (response) => {
+          if (seq !== this.fetchSeq) {
+            this.loadingChange.emit({ loading: false, isCompare: this.isCompare });
+            return;
           }
+          const data = (response.body ?? {}) as { [barcode: string]: any };
+          // The backend resolves gene names case-insensitively and says which one it used.
+          this.geneSymbols.noteCanonical(index, readCanonicalHeader(response.headers));
+
+          this.writeCellValues(data);
 
           if (isGeneExpression) {
             console.log(`[Backend] Loaded adata[:, ${index}].X`);
@@ -442,10 +470,9 @@ export class FilterableTableComponent implements OnInit, OnChanges {
           this.featuresUpdated.emit();
         },
         error: (err) => {
-          if (this.features) {
-            for (const feature of this.features) {
-              feature.properties[this.updateColumn] = undefined;
-            }
+          if (seq === this.fetchSeq && this.features) {
+            // Failed fetch: show the feature as missing everywhere rather than the previous one.
+            this.writeCellValues(null);
             this.featuresUpdated.emit();
           }
 

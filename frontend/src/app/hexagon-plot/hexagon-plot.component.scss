@@ -247,7 +247,7 @@
   justify-content: center;
 }
 
-#compare-button, #live-corr-button {
+#compare-button, #live-corr-button, #same-scale-button {
   background-color: #fabc36;
   color: #fff;
   font-weight: 700;
@@ -263,6 +263,11 @@
     cursor: not-allowed;
     box-shadow: none;
   }
+}
+
+// Off state reads as a plain toggle; on state uses the regular button color.
+#same-scale-button:not(.active) {
+  background-color: #fff3d6;
 }
 
 // ===========================================================================

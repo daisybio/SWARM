@@ -94,6 +94,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { InfoService } from '../info.service';
+import { GeneSymbolService } from '../gene-symbol.service';
 
 @Component({
   selector: 'app-dgea-panel',
@@ -114,7 +115,7 @@ import { InfoService } from '../info.service';
   styleUrls: ['./dgea-panel.component.scss'],
 })
 export class DgeaPanelComponent {
-  constructor(public infoService: InfoService) {}
+  constructor(public infoService: InfoService, private geneSymbols: GeneSymbolService) {}
 
   @Input() isCompare = false;
 
@@ -191,7 +192,8 @@ export class DgeaPanelComponent {
     }
 
     const x = heatmap.groups.map(g => String(g));
-    const y = heatmap.rows.map(r => r.gene);
+    // Gene labels in the dataset's own casing/symbol where known (GeneSymbolService.label).
+    const y = heatmap.rows.map(r => this.geneSymbols.label(r.gene));
     const z = heatmap.rows.map(r => r.scaled);
     const raw = heatmap.rows.map(r => r.raw);
 
