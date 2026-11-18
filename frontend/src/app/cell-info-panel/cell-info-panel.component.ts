@@ -199,7 +199,8 @@ export class CellInfoPanelComponent {
   label(key: string): string {
     const translated = this.translationService.translateSync(key);
     if (translated !== key) return translated;
-    return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    // display only: the key suffix 'genie3' is a data-contract name; users see the method-neutral 'TF-GRN'
+    return key.replace(/_/g, ' ').replace(/\bgenie3\b/gi, 'TF-GRN').replace(/\b\w/g, c => c.toUpperCase());
   }
 
   // ----- Property-value formatting helpers (used only by the propertyValue ng-template) -----

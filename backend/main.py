@@ -2591,7 +2591,7 @@ async def read_network_genie(
     session_data = await backend.read(session_id)
 
     if genie_network_path.path and not os.path.exists(genie_network_path.path):
-        raise HTTPException(status_code=400, detail="Genie network file not found")
+        raise HTTPException(status_code=400, detail="TF-GRN network file not found")
     elif genie_network_path.path:
         session_data.genie_network_path = genie_network_path.path
     elif not genie_network_path.path:

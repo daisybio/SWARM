@@ -381,7 +381,7 @@
 
     <!-- VIPER needs Genie3 only -->
     <div class="section" *ngIf="form.get('network.algorithms.viper')?.value">
-      <label>Upload Genie3 network (.csv) <span class="required">*</span>:</label>
+      <label>Upload TF-GRN network (.csv; e.g. GENIE3 or GRNBoost2 output) <span class="required">*</span>:</label>
       <div class="file">
         <input id="genie3Net" type="file" (change)="onFileSelected($event, 'genie3Net')" accept=".csv">
         <label for="genie3Net" class="file-control">
@@ -395,7 +395,7 @@
 
     <div class="section" *ngIf="form.get('network.algorithms.viper')?.value && genie3Selected"
       formGroupName="genie3Params">
-      <div class="section-title">Genie3 — options</div>
+      <div class="section-title">TF-GRN — options</div>
 
       <div class="field-grid">
         <div class="field">
@@ -421,7 +421,7 @@
 
       <!-- Upload rule: Genie3 OR both SPONGE files -->
       <div class="subsection">
-        <label>Upload Genie3 network (.csv) — optional (required if SPONGE not provided):</label>
+        <label>Upload TF-GRN network (.csv; e.g. GENIE3 or GRNBoost2 output) — optional (required if SPONGE not provided):</label>
         <div class="file">
           <input id="genie3NetTriad" type="file" (change)="onFileSelected($event, 'genie3Net')" accept=".csv">
           <label for="genie3NetTriad" class="file-control">
@@ -435,7 +435,7 @@
       <!-- Genie3 parameters — only when network scores ON + a Genie3 file selected -->
       <div class="section" *ngIf="form.get('scores.networkScores')?.value && genie3Selected"
         formGroupName="genie3Params">
-        <div class="section-title">Genie3 — options</div>
+        <div class="section-title">TF-GRN — options</div>
 
         <div class="field-grid">
           <div class="field">
@@ -477,7 +477,7 @@
             </span>
           </label>
         </div>
-        <small>Please upload either a Genie3 network or both SPONGE files.</small>
+        <small>Please upload either a TF-GRN network or both SPONGE files.</small>
       </div>
       <!-- Show SPONGE parameters only if both SPONGE input files are provided -->
       <div class="section" *ngIf="usingSponge" formGroupName="params">
@@ -746,7 +746,7 @@
     <br>
 
     <!-- Upload Genie3 (optional) -->
-    <label>Upload Genie3 network (.csv) — optional:</label>
+    <label>Upload TF-GRN network (.csv; e.g. GENIE3 or GRNBoost2 output) — optional:</label>
     <div class="file">
       <input id="lianaGenie3" type="file" (change)="onFileSelected($event, 'lianaGenie3')" accept=".csv">
       <label for="lianaGenie3" class="file-control">

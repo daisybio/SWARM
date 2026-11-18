@@ -195,7 +195,7 @@
         <mat-tab label="RNA Regulatory Scores">
           <div *ngIf="isCategoryDataMissing('RNA Regulatory Scores', false)" class="modality-missing-info">
             <mat-icon>info_outline</mat-icon>
-            <span>This dataset doesn't include RNA-based regulatory network scores (GENIE3/SPONGE).</span>
+            <span>This dataset doesn't include RNA-based regulatory network scores (TF-GRN/SPONGE).</span>
           </div>
           <mat-tab-group #innerTabGroupMain (selectedTabChange)="onTabChange($event)" preserveContent="true" dynamicHeight="false">
 
@@ -501,7 +501,7 @@
           <mat-tab label="RNA Regulatory Scores">
             <div *ngIf="isCategoryDataMissing('RNA Regulatory Scores', true)" class="modality-missing-info">
               <mat-icon>info_outline</mat-icon>
-              <span>This dataset doesn't include RNA-based regulatory network scores (GENIE3/SPONGE).</span>
+              <span>This dataset doesn't include RNA-based regulatory network scores (TF-GRN/SPONGE).</span>
             </div>
             <mat-tab-group #innerTabGroupCompare (selectedTabChange)="onTabChange($event,true)" preserveContent="true" dynamicHeight="false">
 

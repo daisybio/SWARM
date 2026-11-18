@@ -269,7 +269,7 @@
         <ul>
           <li><code>regulator</code>: <code>[gene1, gene2, ..., geneN]</code></li>
         </ul>
-        The two do not use the same identifier type for the regulator keys: GENIE3 gene sets are
+        The two do not use the same identifier type for the regulator keys: TF-GRN gene sets are
         keyed by gene symbol (e.g. <code>CEBPA</code>), whereas SPONGE gene sets are keyed by
         Ensembl gene ID (e.g. <code>ENSG00000034239</code>).
       </li>
@@ -357,9 +357,9 @@
       </li>
     </ul>
 
-    <h3>We furthermore use GRNs computed using sponge and genie3, both CSV-formatted.</h3>
+    <h3>We furthermore use GRNs computed using SPONGE and a TF-GRN method (e.g. GENIE3 or GRNBoost2), both CSV-formatted.</h3>
 
-    <h4>Genie:</h4>
+    <h4>TF-GRN (e.g. GENIE3 / GRNBoost2):</h4>
     <pre class="codeblock"><code>regulatoryGene,targetGene,weight
 FOXM1,KIF20A,0.06364686682258</code></pre>
 
@@ -453,7 +453,7 @@ ENSG00000158486,2383,0.198411022951078,4746.3198009264,4.10493693317117e-05</cod
     To explore important regulatory modules in specific tissue areas, the user is provided
     with the regulatory scores view, which is also visible when the website is first loaded.
     To integrate the regulatory information into the spatial map, upon selection of a gene
-    set of the GENIE3 or SPONGE network, different types of scores can be visualized
+    set of the TF-GRN or SPONGE network, different types of scores can be visualized
     on the map. These scores show the importance of the gene set in a spot and can be
     compared directly on the map, allowing for the identification of tissue regions where a
     specific regulatory module shows higher activity.
@@ -472,7 +472,7 @@ ENSG00000158486,2383,0.198411022951078,4746.3198009264,4.10493693317117e-05</cod
     In the <strong>Regulatory Scores View</strong> you are provided with a subgraph of the network that is based on
     the currently selected gene set in the geneset-dropdown menu. This subgraph is built from the geneset and the
     prefiltered
-    GENIE3/Sponge network. After selecting all edges involving a gene set node, the edges are filtered for your
+    TF-GRN/Sponge network. After selecting all edges involving a gene set node, the edges are filtered for your
     weight/pvalue filter (slider above the graph).
     The MinEdges slider controls the size of the network by selecting the best MinEdges edges from the remaining network
     after filtering for your p-value/weight threshold.

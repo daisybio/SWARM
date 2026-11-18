@@ -230,7 +230,8 @@ export class FilterableTableComponent implements OnInit, OnChanges {
   }
 
   displayColumnName(col: string): string {
-    return col.replace(/_/g, ' ');
+    // display only: 'genie3' key suffix shown as method-neutral 'TF-GRN'
+    return col.replace(/_/g, ' ').replace(/\bgenie3\b/gi, 'TF-GRN');
   }
 
   truncateMiddle(text: string, front = 4, back = 7): string {

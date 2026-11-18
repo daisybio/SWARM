@@ -38,7 +38,7 @@ const CATEGORIES: CellPropertyCategory[] = [
     title: 'Regulatory & Motif Activity',
     icon: 'hub',
     description:
-      "Gene-regulatory and chromatin-accessibility activity for this cell: AUCell scores summarizing regulon/gene-set activity from the GENIE3 and SPONGE gene regulatory networks, and chromVar deviation scores for transcription-factor motif accessibility.",
+      "Gene-regulatory and chromatin-accessibility activity for this cell: AUCell scores summarizing regulon/gene-set activity from the TF-GRN (transcription-factor gene regulatory network) and SPONGE networks, and chromVar deviation scores for transcription-factor motif accessibility.",
   },
   {
     key: 'liveView',
@@ -198,11 +198,11 @@ const FIELD_INFO: Record<string, string> = {
   pct_counts_in_top_500_genes: 'Percentage of this cell\'s total counts coming from its top 500 most highly expressed genes.',
 
   chromvar_total_sum: 'Summed chromVar deviation score across all transcription-factor motifs — a rough summary of overall regulatory/chromatin activity in this cell.',
-  aucell_genie3: 'AUCell activity score for each GENIE3-inferred regulon/gene set in this cell: how strongly that gene set\'s expression is enriched relative to all genes.',
+  aucell_genie3: 'AUCell activity score for each TF-GRN regulon/gene set in this cell: how strongly that gene set\'s expression is enriched relative to all genes.',
   aucell_sponge: 'AUCell activity score for each SPONGE-inferred regulon/gene set in this cell.',
   'motif_*': 'chromVar accessibility deviation score for this transcription-factor motif family — higher values indicate greater predicted regulatory activity of that motif in this cell.',
 
-  regulatory_scores: 'Raw regulatory-network (GENIE3/SPONGE) AUCell score most recently used to color the map.',
+  regulatory_scores: 'Raw regulatory-network (TF-GRN/SPONGE) AUCell score most recently used to color the map.',
   gene_expression: "Expression value of the currently selected gene, as last used to color the map.",
   tf_activity: 'Transcription-factor activity score (from motif/chromVar analysis) most recently used to color the map.',
   pathway_activity: 'Pathway activity score most recently used to color the map.',
@@ -270,11 +270,11 @@ const SCORE_INFO: Record<string, string> = {
   viper:
     'VIPER (Virtual Inference of Protein-activity by Enriched Regulon analysis): Estimates protein/TF activity from the coordinated expression changes of its direct downstream target genes.',
   genie3_network:
-    'GENIE3 regulatory network: Inferred using tree-based ensemble methods (Random Forest / ExtraTrees). Edge weights quantify the predictive importance of the regulator transcription factor for target gene expression.',
+    'TF-GRN regulatory network (transcription-factor gene regulatory network, e.g. inferred with GENIE3 or GRNBoost2): Inferred using tree-based ensemble methods (Random Forest / ExtraTrees / gradient boosting). Edge weights quantify the predictive importance of the regulator transcription factor for target gene expression.',
   sponge_network:
     'SPONGE ceRNA network: Inferred using multiple sensitivity correlation (mscor) to identify competing endogenous RNA interactions mediated by shared microRNA binding.',
   genie3_weight_cutoff:
-    'Minimum edge weight threshold for GENIE3 interactions. Higher values filter for high-confidence, strongly predictive regulatory connections.',
+    'Minimum edge weight threshold for TF-GRN interactions. Higher values filter for high-confidence, strongly predictive regulatory connections.',
   sponge_pvalue_cutoff:
     'Maximum adjusted p-value threshold for SPONGE ceRNA interactions. Lower values filter for statistically significant microRNA sponge pairs.',
   min_edges:
@@ -359,7 +359,7 @@ const COLUMN_INFO: Record<string, string> = {
   p_val_adj: 'Benjamini-Hochberg false discovery rate (FDR) adjusted p-value.',
   'p.adj': 'Benjamini-Hochberg false discovery rate (FDR) adjusted p-value.',
   'p.val': 'Nominal p-value from the statistical test.',
-  weight: 'Predictive importance weight of the regulatory connection (GENIE3).',
+  weight: 'Predictive importance weight of the regulatory connection (TF-GRN).',
   mscor: 'Multiple sensitivity correlation quantifying microRNA-mediated sponge interaction strength (SPONGE).',
   cor: 'Pearson correlation coefficient between expression profiles.',
   pcor: 'Partial correlation coefficient controlling for third-variable confounding.',

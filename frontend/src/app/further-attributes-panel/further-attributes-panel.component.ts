@@ -534,7 +534,8 @@ export class FurtherAttributesPanelComponent implements OnChanges {
   private formatLabel(key: string): string {
     const translated = this.translationService.translateSync(key);
     if (translated !== key) return translated;
-    return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    // display only: 'genie3' key suffix shown as method-neutral 'TF-GRN'
+    return key.replace(/_/g, ' ').replace(/\bgenie3\b/gi, 'TF-GRN').replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
   applyFilters(): void {

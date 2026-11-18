@@ -197,7 +197,7 @@ export class InfoComponent implements OnDestroy {
           { key: 'obsm["aucell_scores_genie3" | "_sponge"]', requirement: 'optional', note: 'AUCell gene-set activity per spot.' },
           { key: 'obsm["spongeffects_GSVA_scores_*"]', requirement: 'optional', note: 'GSVA module scores.' },
           { key: 'obsm["spongeffects_ssGSEA_scores_*"]', requirement: 'optional', note: 'ssGSEA module scores.' },
-          { key: 'obsm["viper_scores_genie3"]', requirement: 'optional', note: 'VIPER regulon activity. GENIE3 only — there is no SPONGE variant.' },
+          { key: 'obsm["viper_scores_genie3"]', requirement: 'optional', note: 'VIPER regulon activity. TF-GRN only — there is no SPONGE variant.' },
           { key: 'uns["genie_genesets"] / uns["sponge_genesets"]', requirement: 'optional', note: 'Gene-set membership backing the network subgraph views.' },
         ],
       },
@@ -256,7 +256,7 @@ export class InfoComponent implements OnDestroy {
         entries: [
           { key: 'barcode', requirement: 'required', note: 'Spot identity; used as the D3 join key.', present: meta ? true : null },
           { key: 'leiden', requirement: 'conditional', note: 'Cluster id. Required by Cluster Information and Co-occurrence.', present: meta ? true : null },
-          { key: 'regulatory_scores', requirement: 'optional', note: 'First available GENIE3/SPONGE score.', present: meta ? true : null },
+          { key: 'regulatory_scores', requirement: 'optional', note: 'First available TF-GRN/SPONGE score.', present: meta ? true : null },
           { key: 'chromvar_total_sum, motif_<group>', requirement: 'optional', note: 'chromVAR summaries per motif group.', present: meta ? true : null },
         ],
       },
@@ -351,12 +351,12 @@ export class InfoComponent implements OnDestroy {
         group: 'Regulatory networks',
         files: [
           {
-            name: 'GENIE3 network', key: 'genie_network_path', path: ds?.genie_network_path, requirement: 'conditional',
+            name: 'TF-GRN network (e.g. GENIE3 / GRNBoost2)', key: 'genie_network_path', path: ds?.genie_network_path, requirement: 'conditional',
             note: 'Required for VIPER, and for AUCell/GSVA/ssGSEA unless SPONGE files are supplied instead.',
           },
           {
             name: 'SPONGE network', key: 'sponge_network_path', path: ds?.sponge_network_path, requirement: 'conditional',
-            note: 'Alternative to GENIE3 for the AUCell/GSVA/ssGSEA trio.',
+            note: 'Alternative to a TF-GRN for the AUCell/GSVA/ssGSEA trio.',
           },
           {
             name: 'TF regulatory graph', key: 'tf_graph_path', path: ds?.tf_graph_path, requirement: 'optional',

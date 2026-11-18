@@ -2820,7 +2820,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
   public updateSubgraphGenie3(compare: boolean = false): void {
     const token = this.nextRequestToken('genie3');
-    console.log('Updating AUCELL graph for Genie3...');
+    console.log('Updating AUCELL graph for TF-GRN...');
     compare ? this.isLoadingGenie3Compare = true : this.isLoadingGenie3 = true;
     const geneSet = compare ? this.selectedGeneSetGenie3Compare : this.selectedGeneSetGenie3;
     const datasetId = compare ? this.selectedDatasetCompare?.id : this.selectedDataset?.id;
@@ -2895,7 +2895,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
             return;
           }
           console.error(
-            `[Backend] Failed to load Genie3 Connections for["${geneSet}"]`,
+            `[Backend] Failed to load TF-GRN Connections for["${geneSet}"]`,
             err,
           );
           compare ? this.isLoadingGenie3Compare = false : this.isLoadingGenie3 = false;
@@ -4573,12 +4573,12 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   public getRegulatoryEmptyMessage(networkType: 'genie3' | 'sponge', compare: boolean): string {
     const displayMode = compare ? this.regulatoryScoreDisplayModeCompare : this.regulatoryScoreDisplayMode;
     if (displayMode === 'moranI') {
-      return `No ${networkType === 'genie3' ? 'Genie3' : 'Sponge'} Moran's I regulatory scores loaded`;
+      return `No ${networkType === 'genie3' ? 'TF-GRN' : 'Sponge'} Moran's I regulatory scores loaded`;
     }
     if (displayMode === 'gearyC') {
-      return `No ${networkType === 'genie3' ? 'Genie3' : 'Sponge'} Geary's C regulatory scores loaded`;
+      return `No ${networkType === 'genie3' ? 'TF-GRN' : 'Sponge'} Geary's C regulatory scores loaded`;
     }
-    return `No ${networkType === 'genie3' ? 'Genie3' : 'Sponge'} global regulatory scores loaded`;
+    return `No ${networkType === 'genie3' ? 'TF-GRN' : 'Sponge'} global regulatory scores loaded`;
   }
   // isArray/isNestedArray/isNumberLike/toNumberLike/isNumericArray/isPrimitive/getArrayStats/
   // formatValue/toggleExpand/isExpanded/trackByIndex/asArrayRow/looksLikeArrayString/
@@ -4591,7 +4591,8 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   label(key: string): string {
     const translated = this.translationService.translateSync(key);
     if (translated !== key) return translated;
-    return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    // display only: the key suffix 'genie3' is a data-contract name; users see the method-neutral 'TF-GRN'
+    return key.replace(/_/g, ' ').replace(/\bgenie3\b/gi, 'TF-GRN').replace(/\b\w/g, c => c.toUpperCase());
   }
 
   public selectViewTutorial(): void {

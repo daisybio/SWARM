@@ -2,9 +2,9 @@
 
   <div class="selected-gene-info">
     <strong>{{ selectionLabel }}</strong><br>
-    Score: {{ selectedRegulatoryScore || 'None' }}<br>
+    Score: {{ (selectedRegulatoryScore || 'None').replace('genie3', 'TF-GRN') }}<br>
     <ng-container *ngIf="selectedRegulatoryScore?.endsWith('genie3'); else spongeSelectionTpl">
-      Gene set (Genie3): {{ selectedGeneSetGenie3 ? (selectedGeneSetGenie3 | geneSymbol) : 'None' }}
+      Gene set (TF-GRN): {{ selectedGeneSetGenie3 ? (selectedGeneSetGenie3 | geneSymbol) : 'None' }}
     </ng-container>
     <ng-template #spongeSelectionTpl>
       <ng-container *ngIf="selectedRegulatoryScore?.endsWith('sponge'); else noNetworkSelectionTpl">
@@ -47,7 +47,7 @@
         </button>
       </div>
       <h4 class="hx-title-with-info">
-        Genie3 Regulatory Scores (TF regulons)
+        TF-GRN Regulatory Scores (TF regulons)
         <button mat-icon-button type="button" class="hx-info-btn"
           [matTooltip]="infoService.getScoreInfo('genie3_network') || ''" matTooltipPosition="above">
           <mat-icon>help_outline</mat-icon>
@@ -89,7 +89,7 @@
           <section class="graph-block genie3-block">
             <div class="gene-set-header">
               <h3 class="hx-title-with-info">
-                {{ isCompare ? 'Genie3 Network (Comparison)' : 'Genie3 Network' }}
+                {{ isCompare ? 'TF-GRN Network (Comparison)' : 'TF-GRN Network' }}
                 <button mat-icon-button type="button" class="hx-info-btn"
                   [matTooltip]="infoService.getScoreInfo('genie3_network') || ''" matTooltipPosition="above">
                   <mat-icon>help_outline</mat-icon>
@@ -112,13 +112,13 @@
               <span class="gene-id-hint" *ngIf="geneSymbols.idFor(selectedGeneSetGenie3) as ensemblId">{{ ensemblId }}</span>
             </div>
             <div *ngIf="!selectedGeneSetGenie3" class="network-message">
-              No Genie3 network selected
+              No TF-GRN network selected
             </div>
 
             <div *ngIf="selectedGeneSetGenie3 && genie3SliderData" class="genie3-controls">
               <div class="control-row">
                 <label [attr.for]="minWeightSliderId" class="hx-title-with-info">
-                  Minimum Genie3 Weight: {{ genie3WeightCutoff }}
+                  Minimum TF-GRN Weight: {{ genie3WeightCutoff }}
                   <button mat-icon-button type="button" class="hx-info-btn"
                     [matTooltip]="infoService.getScoreInfo('genie3_weight_cutoff') || ''" matTooltipPosition="above">
                     <mat-icon>help_outline</mat-icon>
@@ -147,7 +147,7 @@
 
             <div *ngIf="isLoadingGenie3" class="loading-container graph-loading-container">
               <mat-progress-spinner mode="indeterminate" [diameter]="44" color="primary"
-                aria-label="Loading Genie3 network">
+                aria-label="Loading TF-GRN network">
               </mat-progress-spinner>
             </div>
 
@@ -156,7 +156,7 @@
             <div class="gprofiler-button-container" *ngIf="!isLoadingGenie3 && !isCompare">
               <button class="gprofiler-btn" (click)="analyzeInGProfilerRequested.emit('genie3')"
                 [disabled]="!selectedGeneSetGenie3">
-                🧬 Analyze All Genie3 Genes in gProfiler
+                🧬 Analyze All TF-GRN Genes in gProfiler
               </button>
               <button mat-icon-button type="button" class="hx-info-btn"
                 [matTooltip]="infoService.getScoreInfo('gprofiler') || ''" matTooltipPosition="above">
@@ -165,7 +165,7 @@
             </div>
 
             <div *ngIf="!isLoadingGenie3 && selectedGeneSetGenie3" class="graph-summary">
-              Genie3 Weight Cutoff: {{ genie3WeightCutoff | number: '1.2-5' }} · Number of edges: {{ genie3MinEdges }}
+              TF-GRN Weight Cutoff: {{ genie3WeightCutoff | number: '1.2-5' }} · Number of edges: {{ genie3MinEdges }}
             </div>
           </section>
 
@@ -271,7 +271,7 @@
           <h4>Regulatory Scores for Selected Cell: {{ selectedCell.properties.barcode }}</h4>
 
           <h4 class="hx-title-with-info">
-            Genie3 Regulatory Scores (TF regulons)
+            TF-GRN Regulatory Scores (TF regulons)
             <button mat-icon-button type="button" class="hx-info-btn"
               [matTooltip]="infoService.getScoreInfo('genie3_network') || ''" matTooltipPosition="above">
               <mat-icon>help_outline</mat-icon>

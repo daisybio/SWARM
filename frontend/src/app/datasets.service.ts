@@ -138,8 +138,8 @@ export class DatasetService {
         { path: dataset.genie_network_path },
         { withCredentials: true }
       ).subscribe({
-        next: () => console.log('✓ Loaded Genie3 network'),
-        error: (err) => console.error('✗ Failed to load Genie3 network:', err)
+        next: () => console.log('✓ Loaded TF-GRN network'),
+        error: (err) => console.error('✗ Failed to load TF-GRN network:', err)
       });
     }
 
