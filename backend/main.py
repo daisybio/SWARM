@@ -507,14 +507,14 @@ def _normalize_gene_key(gene: str) -> str:
     return gene.strip().lower()
 
 
-def _gene_http_error(err: GeneLookupError) -> HTTPException:
+def _gene_http_error(err: "GeneLookupError") -> HTTPException:  # quoted: GeneLookupError is imported further down
     """404 for an unknown gene, 409 when casing alone leaves several candidates. The detail stays
     a plain string (what these routes always returned); the stable code is in the X-Error-Code header."""
     status = 409 if err.code in ("gene_ambiguous", "column_ambiguous") else 404
     return HTTPException(status_code=status, detail=err.message, headers={"X-Error-Code": err.code})
 
 
-def _gene_match_headers(match: GeneMatch) -> Dict[str, str]:
+def _gene_match_headers(match: "GeneMatch") -> Dict[str, str]:
     """Which gene a lookup landed on, for routes whose JSON body is a bare {barcode: value} map.
     Percent-encoded because header values must be latin-1."""
     return {
@@ -524,7 +524,7 @@ def _gene_match_headers(match: GeneMatch) -> Dict[str, str]:
     }
 
 
-def _resolve_gene_match(adata: sc.AnnData, gene: str, adata_path: Optional[str] = None) -> GeneMatch:
+def _resolve_gene_match(adata: sc.AnnData, gene: str, adata_path: Optional[str] = None) -> "GeneMatch":
     """Shared gene lookup (see gene_lookup.py): exact var_name, unique case-insensitive var_name,
     unique case-insensitive var['symbol'], then Ensembl id. Raises GeneLookupError."""
     ensembl_map = (lambda: _get_gene_symbol_map(adata_path)) if adata_path else None
