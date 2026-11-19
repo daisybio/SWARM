@@ -26,6 +26,8 @@ notebooks/
 *.gz
 *.tbi
 *.tsv
+# small lookup tables the backend reads at runtime
+!backend/resources/*.tsv
 *.pdf
 
 # ignore logs

@@ -31,6 +31,26 @@ sponge_score_names = [
 
 genewise_scores = ["moranI", "gearyC"]
 motifwise_scores = ["chromvar_moranI", "chromvar_gearyC"]
+
+# JASPAR 2024 CORE (Homo sapiens) class and family per motif ID, exported from the pipeline's multiome container by
+# scripts/jaspar/make_jaspar_annotation.sh. Lets users find motif families in the ChromVar table (e.g. AP-1 = 'Fos-related' /
+# 'Jun-related'), which the TF names alone do not say.
+JASPAR_ANNOTATION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "jaspar2024_core_hsapiens_annotation.tsv")
+
+
+def add_jaspar_columns(table: pd.DataFrame) -> pd.DataFrame:
+    """Insert JASPAR_family and JASPAR_class after the TF column of a chromVAR motif table, matched by motif ID (the motif_id
+    column, else the index). IDs not in the annotation get an empty string; without the resource file the table is unchanged."""
+    if not isinstance(table, pd.DataFrame) or not os.path.exists(JASPAR_ANNOTATION):
+        return table
+    ann = pd.read_csv(JASPAR_ANNOTATION, sep="\t", dtype=str).set_index("motif_id")
+    ids = table["motif_id"].astype(str) if "motif_id" in table.columns else pd.Series(table.index.astype(str), index=table.index)
+    out = table.copy()
+    pos = out.columns.get_loc("TF") + 1 if "TF" in out.columns else len(out.columns)
+    for k, (col, src) in enumerate([("JASPAR_family", "jaspar_family"), ("JASPAR_class", "jaspar_class")]):
+        if col not in out.columns:
+            out.insert(pos + k, col, ids.map(ann[src]).fillna("").values)
+    return out
 cluster_wise_scores = ["diff_motif_activity_top_motifs"]
 
 
@@ -521,7 +541,10 @@ if __name__ == "__main__":
     if any(gs in spatial_data.uns for gs in global_scores_sort_keys):
         for global_score in global_scores_sort_keys:
             if global_score in spatial_data.uns:
-                meta_dict[global_score] = spatial_data.uns[global_score].to_dict()
+                table = spatial_data.uns[global_score]
+                if global_score in motifwise_scores:
+                    table = add_jaspar_columns(table)
+                meta_dict[global_score] = table.to_dict()
 
     # Every cell's baked-in properties["gene_expression"] (see Hexagons.to_geojson's own
     # gene_expression_of_interest, computed the same way here since that's a local inside the
