@@ -31,7 +31,7 @@ import { FootprintPanelComponent } from '../footprint-panel/footprint-panel.comp
 import { DgeaPanelComponent } from '../dgea-panel/dgea-panel.component';
 import { RegulatoryScoresPanelComponent } from '../regulatory-scores-panel/regulatory-scores-panel.component';
 import { GrnEvaluationPanelComponent } from '../grn-evaluation-panel/grn-evaluation-panel.component';
-import { GrnEvaluationOnDemandPanelComponent } from '../grn-evaluation-on-demand-panel/grn-evaluation-on-demand-panel.component';
+// Deactivated for now (tab shows 'This feature will come.'): import { GrnEvaluationOnDemandPanelComponent } from '../grn-evaluation-on-demand-panel/grn-evaluation-on-demand-panel.component';
 import { FurtherAttributesPanelComponent } from '../further-attributes-panel/further-attributes-panel.component';
 import { SpatialCorrelationPanelComponent } from '../spatial-correlation-panel/spatial-correlation-panel.component';
 import { LiveCorrelationDrawerComponent } from '../live-correlation-drawer/live-correlation-drawer.component';
@@ -114,7 +114,7 @@ const TAB_CATEGORIES: { category: string; tabs: string[] }[] = [
 
 @Component({
   selector: 'app-hexagon-plot',
-  imports: [CommonModule, FormsModule, FilterableTableComponent, HexagonViewComponent, CellInfoPanelComponent, ClusterInfoPanelComponent, CoOccurrencePanelComponent, RegulatoryTablesPanelComponent, ChromvarCorrelationPanelComponent, DifferentialMotifActivityPanelComponent, FootprintPanelComponent, DgeaPanelComponent, RegulatoryScoresPanelComponent, GrnEvaluationPanelComponent, GrnEvaluationOnDemandPanelComponent, FurtherAttributesPanelComponent, SpatialCorrelationPanelComponent, LiveCorrelationDrawerComponent, MatButtonModule, MatButtonToggleModule, MatIconModule, MatTooltipModule, MatDialogModule, MatProgressSpinnerModule, MatFormField, MatLabel, MatOption, MatSelect, TranslatePipe, MatExpansionModule, MatTableModule, MatDividerModule, MatTabsModule, MatInputModule, MatCheckboxModule],
+  imports: [CommonModule, FormsModule, FilterableTableComponent, HexagonViewComponent, CellInfoPanelComponent, ClusterInfoPanelComponent, CoOccurrencePanelComponent, RegulatoryTablesPanelComponent, ChromvarCorrelationPanelComponent, DifferentialMotifActivityPanelComponent, FootprintPanelComponent, DgeaPanelComponent, RegulatoryScoresPanelComponent, GrnEvaluationPanelComponent, FurtherAttributesPanelComponent, SpatialCorrelationPanelComponent, LiveCorrelationDrawerComponent, MatButtonModule, MatButtonToggleModule, MatIconModule, MatTooltipModule, MatDialogModule, MatProgressSpinnerModule, MatFormField, MatLabel, MatOption, MatSelect, TranslatePipe, MatExpansionModule, MatTableModule, MatDividerModule, MatTabsModule, MatInputModule, MatCheckboxModule],
   standalone: true,
   templateUrl: './hexagon-plot.component.html',
   styleUrls: ['./hexagon-plot.component.scss'],

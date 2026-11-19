@@ -248,7 +248,7 @@
         <mat-tab label="ATAC / Multiome">
           <div *ngIf="isCategoryDataMissing('ATAC / Multiome', false)" class="modality-missing-info">
             <mat-icon>info_outline</mat-icon>
-            <span>This dataset doesn't include ATAC-seq / multiome data, so chromatin accessibility, motif, and footprinting analyses aren't available. GRN Evaluation - On Demand can still compute a fresh evaluation.</span>
+            <span>This dataset doesn't include ATAC-seq / multiome data, so chromatin accessibility, motif, and footprinting analyses aren't available.</span>
           </div>
           <mat-tab-group #innerTabGroupMain (selectedTabChange)="onTabChange($event)" preserveContent="true" dynamicHeight="false">
 
@@ -288,6 +288,9 @@
             </mat-tab>
 
             <mat-tab label="GRN Evaluation - On Demand">
+              <!-- On-demand GRN evaluation deactivated for now; panel kept below for re-enabling. -->
+              <p class="grn-on-demand-coming-soon" style="padding: 16px;">This feature will come.</p>
+              <!--
               <app-grn-evaluation-on-demand-panel [isCompare]="false" [(obsKey)]="onDemandGrnParams.obsKey"
                 [(cluster)]="onDemandGrnParams.cluster" [(name)]="onDemandGrnParams.name"
                 [(geneSet)]="onDemandGrnParams.geneSet" [(usePriorGrn)]="onDemandGrnParams.usePriorGrn"
@@ -300,6 +303,7 @@
                 (selectedRunChange)="onSelectGrnRun($event, false)" (refreshRunsRequested)="loadOnDemandGrnRuns(false)"
                 (tableLoadingChange)="onTableLoadingChange($event)" (graphFilterChange)="onChangeGrnGraphFilter($event, false)"
                 (registerRequested)="registerOnDemandGrnRun(false)"></app-grn-evaluation-on-demand-panel>
+              -->
             </mat-tab>
 
           </mat-tab-group>
@@ -555,7 +559,7 @@
           <mat-tab label="ATAC / Multiome">
             <div *ngIf="isCategoryDataMissing('ATAC / Multiome', true)" class="modality-missing-info">
               <mat-icon>info_outline</mat-icon>
-              <span>This dataset doesn't include ATAC-seq / multiome data, so chromatin accessibility, motif, and footprinting analyses aren't available. GRN Evaluation - On Demand can still compute a fresh evaluation.</span>
+              <span>This dataset doesn't include ATAC-seq / multiome data, so chromatin accessibility, motif, and footprinting analyses aren't available.</span>
             </div>
             <mat-tab-group #innerTabGroupCompare (selectedTabChange)="onTabChange($event,true)" preserveContent="true" dynamicHeight="false">
 
@@ -598,6 +602,9 @@
               </mat-tab>
 
               <mat-tab label="GRN Evaluation - On Demand">
+                <!-- On-demand GRN evaluation deactivated for now; panel kept below for re-enabling. -->
+                <p class="grn-on-demand-coming-soon" style="padding: 16px;">This feature will come.</p>
+                <!--
                 <app-grn-evaluation-on-demand-panel [isCompare]="true" [(obsKey)]="onDemandGrnParams.obsKey"
                   [(cluster)]="onDemandGrnParams.cluster" [(name)]="onDemandGrnParams.name"
                   [(geneSet)]="onDemandGrnParams.geneSet" [(usePriorGrn)]="onDemandGrnParams.usePriorGrn"
@@ -610,6 +617,7 @@
                   (selectedRunChange)="onSelectGrnRun($event, true)" (refreshRunsRequested)="loadOnDemandGrnRuns(true)"
                   (tableLoadingChange)="onTableLoadingChange($event)" (graphFilterChange)="onChangeGrnGraphFilter($event, true)"
                   (registerRequested)="registerOnDemandGrnRun(true)"></app-grn-evaluation-on-demand-panel>
+                -->
               </mat-tab>
 
             </mat-tab-group>
