@@ -144,3 +144,25 @@ backend/calc_multiome_scores/calc_multiome_scores_test.ipynb
 
 # Superseded by download_example_data.sh
 /get_example_data.sh
+
+# Internal material stays local until the pre-publication release (Lena, 2026-11-19):
+# use-case and paper analyses, QA scripts, reports, slide decks, editor and backup files.
+/use_cases/
+/checkfiles/
+/reports/
+/backend/scripts/xenium_pdx/
+/backend/scripts/*usecase*/
+/backend/scripts/mapping_critique*/
+/backend/scripts/gbm_grn_marker_check/
+/backend/scripts/heart_projection_control.py
+/backend/scripts/heart_avn_boundary_gradient.py
+/gene_category_overlaps*.ipynb
+/heart_*.json
+*.pptx
+*.ppt
+*.docx
+*.xlsx
+*.code-workspace
+*.backup
+/wget-log
+/new_idea.html
