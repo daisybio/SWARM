@@ -136,14 +136,11 @@ backend/calc_multiome_scores/calc_multiome_scores_test.ipynb
 # Claude Code state seed (local only, contains credentials)
 .devcontainer/.claude-state-seed/
 
-# Root-level working notes (research write-ups, design scratch, paper drafts) stay local.
-# The docs that genuinely belong to the repo are re-included; the pattern is anchored with
-# a leading slash so nested documentation (backend/README.md, frontend/README.md, the
-# README_*.md files under backend/calc_multiome_scores/, ...) is untouched.
-/*.md
-!/README.md
-!/DEVELOPER.md
-!/CLAUDE.md
+# Markdown: only README files are tracked (README.md, README_*.md, ... at any level).
+# All other notes (CLAUDE.md, DEVELOPER.md, design decisions, research write-ups, claims,
+# paper drafts, prompts) stay local and never reach the repo.
+*.md
+!*README*.md
 
 # Superseded by download_example_data.sh
 /get_example_data.sh
