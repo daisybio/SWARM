@@ -402,6 +402,56 @@ verifier = BasicVerifier(
 # In-memory LRU cache for loaded AnnData objects: path -> (mtime, AnnData)
 _ADATA_CACHE: Dict[str, tuple] = {}
 _MAX_ADATA_CACHE_SIZE = 6
+_ADATA_SIZES: Dict[str, int] = {}  # path -> estimated in-memory bytes of the cached AnnData
+# Share of the container/cgroup memory limit the cached AnnData objects may use together; the rest is
+# headroom for pipelines, request buffers and the one object being loaded.
+_ADATA_CACHE_MEM_FRACTION = float(os.environ.get("SWARM_ADATA_CACHE_MEM_FRACTION", "0.7"))
+
+
+def _memory_limit_bytes() -> Optional[int]:
+    """Memory limit of this container (cgroup v2 / v1), or SWARM_MEM_LIMIT_BYTES; None if unlimited."""
+    env = os.environ.get("SWARM_MEM_LIMIT_BYTES")
+    if env:
+        return int(env)
+    for f in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            v = Path(f).read_text().strip()
+            if v != "max" and int(v) < (1 << 50):
+                return int(v)
+        except (OSError, ValueError):
+            pass
+    return None
+
+
+def _estimate_adata_bytes(path: str) -> int:
+    """Uncompressed size of all arrays in an h5ad (what it takes in memory; read from metadata only)."""
+    import h5py
+    total = 0
+    with h5py.File(path, "r") as f:
+        def visit(_name, obj):
+            nonlocal total
+            if isinstance(obj, h5py.Dataset):
+                total += int(obj.size) * obj.dtype.itemsize
+        f.visititems(visit)
+    return total
+
+
+def _evict_adata_for(new_bytes: int) -> None:
+    """Drop the oldest cached AnnData objects until `new_bytes` more fit in the cache's memory budget."""
+    limit = _memory_limit_bytes()
+    if limit is None:
+        return
+    budget = limit * _ADATA_CACHE_MEM_FRACTION
+    dropped = False
+    while _ADATA_CACHE and sum(_ADATA_SIZES.get(k, 0) for k in _ADATA_CACHE) + new_bytes > budget:
+        oldest_key = next(iter(_ADATA_CACHE))
+        del _ADATA_CACHE[oldest_key]
+        _ADATA_SIZES.pop(oldest_key, None)
+        dropped = True
+        print(f"[CACHE EVICT] dropped {oldest_key} (limit {limit / 2**30:.0f} GiB, need {new_bytes / 2**30:.1f} GiB)")
+    if dropped:
+        import gc
+        gc.collect()
 
 def _load_adata_cached(file_path: str) -> sc.AnnData:
     """Load AnnData with in-memory caching to avoid expensive disk re-reads on every request."""
@@ -425,10 +475,18 @@ def _load_adata_cached(file_path: str) -> sc.AnnData:
     if abs_path in _ADATA_CACHE:
         cached_mtime, cached_adata = _ADATA_CACHE[abs_path]
         if cached_mtime == mtime:
+            _ADATA_CACHE[abs_path] = _ADATA_CACHE.pop(abs_path)  # LRU: mark as most recently used
             return cached_adata
 
     print(f"[CACHE MISS] Reading AnnData into memory from: {abs_path}")
     t0 = time.time()
+    try:
+        est_bytes = _estimate_adata_bytes(abs_path)
+    except Exception:
+        est_bytes = 0
+    _ADATA_CACHE.pop(abs_path, None)  # stale (mtime changed) entry
+    _ADATA_SIZES.pop(abs_path, None)
+    _evict_adata_for(est_bytes)
     adata = sc.read_h5ad(abs_path)
     reconstruct_obsm_cols = {
         "ligand_receptor_cosine_similarity": "ligand_receptor",
@@ -467,8 +525,10 @@ def _load_adata_cached(file_path: str) -> sc.AnnData:
     if len(_ADATA_CACHE) >= _MAX_ADATA_CACHE_SIZE:
         oldest_key = next(iter(_ADATA_CACHE))
         del _ADATA_CACHE[oldest_key]
+        _ADATA_SIZES.pop(oldest_key, None)
 
     _ADATA_CACHE[abs_path] = (mtime, adata)
+    _ADATA_SIZES[abs_path] = est_bytes
     print(f"[CACHE LOADED] AnnData loaded in {time.time() - t0:.2f}s (cached in memory)")
     return adata
 
