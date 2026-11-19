@@ -179,6 +179,10 @@ def _extract_raw(matrix: Any, index: int) -> np.ndarray:
         vec = matrix[:, index].toarray().ravel()
     else:
         vec = np.asarray(matrix[:, index]).ravel()
+    # float16 / float32 matrices (X stored as float16 to save space): do all statistics in float64,
+    # otherwise np.std underflows and Moran's I is wrong for low-expressed genes
+    if vec.dtype.kind == "f" and vec.dtype != np.float64:
+        vec = vec.astype(np.float64)
     return vec
 
 
@@ -587,6 +591,51 @@ def _not_found_error(adata: sc.AnnData, feature_id: str, category: str, symbol: 
     return CorrelationError("feature_not_found", f"Feature '{feature_id}' not found in dataset.", 404, feature_id=feature_id)
 
 
+# Map colour-by views that are derived from an obsm table when the geojson is built
+# (visium_to_geojson.py) rather than stored as columns. view -> candidate obsm tables.
+DERIVED_VIEWS = {
+    "chromvar_total_sum": ("chromvar_activity", "chromvar_spot_scores"),
+    "pathway_activity": ("pathway_activity_score_mlm",),
+    "tf_activity": ("tf_activity_score_ulm",),
+}
+
+
+def _resolve_derived_view(adata: sc.AnnData, view: str, feature_id: str) -> Optional[Tuple[Dict[str, Any], np.ndarray]]:
+    """Reproduces what the map shows for a derived colour-by view, so the correlation drawer's
+    default feature matches the map: chromvar_total_sum is the per-cell sum over all motifs;
+    pathway_activity / tf_activity show the table's first column (visium_to_geojson.get_obsm
+    default). Returns None when the underlying table is absent."""
+    for key in DERIVED_VIEWS[view]:
+        if key not in adata.obsm:
+            continue
+        table = adata.obsm[key]
+        matrix = table.values if isinstance(table, pd.DataFrame) else np.asarray(table)
+        if matrix.ndim != 2 or matrix.shape[1] == 0 or not np.issubdtype(matrix.dtype, np.number):
+            continue
+        matrix = matrix.astype(float)
+        if view == "chromvar_total_sum":
+            raw = np.nansum(matrix, axis=1)
+            name = "ChromVAR: total sum over all motifs"
+        else:
+            raw = matrix[:, 0]
+            if isinstance(table, pd.DataFrame):
+                col = str(table.columns[0])
+            else:
+                names = adata.uns.get(f"{key}_colnames", adata.uns.get(f"{key}_names"))
+                col = str(list(names)[0]) if names is not None and len(names) else "column 0"
+            name = f"{view.replace('_', ' ').title()}: {col} (map default)"
+        feat = {
+            "id": feature_id,
+            "name": name,
+            "category": view,
+            "symbol": view.upper(),
+            "obsm_key": key,
+            "all_missing": _is_all_missing(raw),
+        }
+        return feat, np.nan_to_num(raw, nan=0.0, posinf=0.0, neginf=0.0)
+    return None
+
+
 def resolve_feature_or_dynamic(adata: sc.AnnData, feature_id: str, all_features: Dict[str, Any]) -> Tuple[Dict[str, Any], np.ndarray]:
     """Resolves a feature id to (feature info, vector). Raises CorrelationError for anything that
     cannot be resolved; info["all_missing"] is True when the source column held no finite value
@@ -625,6 +674,14 @@ def resolve_feature_or_dynamic(adata: sc.AnnData, feature_id: str, all_features:
                 "feature_not_numeric", f"'{col_target}' in feature table '{ob_key}' holds labels, not numeric values.", 422,
                 table=ob_key, column=str(col_target), feature_id=feature_id,
             )
+
+    # 1b. Derived map views. The map's colour-by properties `chromvar_total_sum`, `pathway_activity`
+    # and `tf_activity` are computed while building the geojson and are not stored in the h5ad,
+    # but the drawer's default feature (before any table row is picked) is `obs::<view>`.
+    if category in ("obs", "obs_metadata") and symbol in DERIVED_VIEWS:
+        derived = _resolve_derived_view(adata, symbol, feature_id)
+        if derived is not None:
+            return derived
 
     # 2. Dynamic Gene Expression
     # Gene names go through the shared lookup (gene_lookup.py): datasets differ in casing convention
