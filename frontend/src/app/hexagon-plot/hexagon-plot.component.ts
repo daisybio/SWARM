@@ -2618,7 +2618,8 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     if (view === 'leiden') {
       return compare ? this.availableClusterIdsCompare : this.availableClusterIds;
     }
-    const features = (compare ? this.compareFeatures : this.features) || [];
+    // All cells, so rare values missing from the downsampled Xenium overview are still listed.
+    const features = this.allMapCells(compare) || [];
     // Memoized: bound to an @Input() in the template, so a fresh array on every change-detection
     // pass both rescanned every cell and re-triggered the child's ngOnChanges each time.
     const cached = this.activeClusterValuesCache[compare ? 1 : 0];
@@ -2759,7 +2760,9 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
-    valuesRaw = features.map((f) => this.extractViewValue(f, viewToUse, !isMainView));
+    // Legend domain from ALL cells: the Xenium overview draws a subset, whose min/max and
+    // category list can miss values that the magnifier then shows.
+    valuesRaw = this.allMapCells(!isMainView).map((f) => this.extractViewValue(f, viewToUse, !isMainView));
 
     // Determine if the property is continuous
     const isContinuous = this.isContinuousScale(viewToUse, features, !isMainView);
@@ -3676,7 +3679,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
       if (clusterValue !== null) {
         this.selectedCluster = clusterValue;
-        this.clusterCells = (this.features || []).filter(
+        this.clusterCells = this.allMapCells(false).filter(
           (c) => String(c.properties?.[this.selectedView]).trim() === String(clusterValue).trim(),
         );
         this.calculateClusterStats(false);
@@ -3718,7 +3721,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
       if (clusterValue !== null) {
         this.selectedClusterCompare = clusterValue;
-        this.compareClusterCells = (this.compareFeatures || []).filter(
+        this.compareClusterCells = this.allMapCells(true).filter(
           (c) => String(c.properties?.[this.selectedCompareView]).trim() === String(clusterValue).trim(),
         );
         this.calculateClusterStats(true);
@@ -3762,7 +3765,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   public onLegendCategoryClicked(category: string, compare: boolean = false): void {
     const view = compare ? this.selectedCompareView : this.selectedView;
-    const features = compare ? (this.compareFeatures || []) : this.features;
+    const features = this.allMapCells(compare) || [];
     const representativeCell = features.find((f) => String(f.properties?.[view]) === category);
     if (!representativeCell) return;
     this.displayCellDetails(representativeCell, compare);
@@ -3793,7 +3796,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
       if (compare) {
         this.selectedClusterCompare = clusterNum;
-        this.compareClusterCells = (this.compareFeatures || []).filter(
+        this.compareClusterCells = this.allMapCells(true).filter(
           (c) => Number(c.properties?.leiden) === clusterNum,
         );
         this.calculateClusterStats(true);
@@ -3802,7 +3805,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         setTimeout(() => this.renderFootprintPlots(this.selectedDatasetCompare, true), 100);
       } else {
         this.selectedCluster = clusterNum;
-        this.clusterCells = (this.features || []).filter(
+        this.clusterCells = this.allMapCells(false).filter(
           (c) => Number(c.properties?.leiden) === clusterNum,
         );
         this.calculateClusterStats(false);
@@ -3813,7 +3816,8 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
-    const features = (compare ? this.compareFeatures : this.features) || [];
+    // All cells (not the downsampled Xenium overview): counts and members must be complete.
+    const features = this.allMapCells(compare) || [];
     const counts = new Map<string, { value: string | number; count: number }>();
     features.forEach((f) => {
       const raw = f.properties?.[view] as string | number | undefined;
@@ -3864,7 +3868,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // 2. Set active cluster state
       this.selectedClusterCompare = clusterId;
-      this.compareClusterCells = (this.compareFeatures || []).filter(
+      this.compareClusterCells = this.allMapCells(true).filter(
         (cell) => String(cell.properties?.[view]).trim() === String(clusterId).trim(),
       );
       this.calculateClusterStats(true);
@@ -3897,7 +3901,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // 2. Set active cluster state
       this.selectedCluster = clusterId;
-      this.clusterCells = (this.features || []).filter(
+      this.clusterCells = this.allMapCells(false).filter(
         (cell) => String(cell.properties?.[view]).trim() === String(clusterId).trim(),
       );
       this.calculateClusterStats(false);
@@ -5965,7 +5969,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   public onSpatialCellSelected(cellId: string, isCompare: boolean = false): void {
-    const featList = isCompare ? this.compareFeatures : this.features;
+    const featList = this.allMapCells(isCompare);
     const targetCell = (featList || []).find((f: any) => {
       const props = f?.properties;
       return (
