@@ -1,4 +1,4 @@
-import { isMissingValue } from '../attribute-filters';
+import { compareMissingLast } from '../attribute-filters';
 import { Component, OnInit, Input, Output, EventEmitter, OnChanges, SimpleChanges, ElementRef, Inject, Optional } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
@@ -333,23 +333,7 @@ export class FilterableTableComponent implements OnInit, OnChanges {
     if (this.sortState.column) {
       const sortKey = this.sortState.column;
       const asc = this.sortState.asc;
-      result.sort((a, b) => {
-        const valA = a[sortKey];
-        const valB = b[sortKey];
-
-        // Missing values (NaN, null, "nan", ...) never take part in the ordering: always last,
-        // whichever direction is sorted.
-        const missA = isMissingValue(valA);
-        const missB = isMissingValue(valB);
-        if (missA || missB) return missA === missB ? 0 : (missA ? 1 : -1);
-
-        if (typeof valA === 'number' && typeof valB === 'number') {
-          return asc ? valA - valB : valB - valA;
-        }
-        return asc
-          ? String(valA).localeCompare(String(valB))
-          : String(valB).localeCompare(String(valA));
-      });
+      result.sort((a, b) => compareMissingLast(a[sortKey], b[sortKey], asc));
     }
 
     return result;

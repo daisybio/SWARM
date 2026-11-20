@@ -7,7 +7,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { CellFeature } from '../hexagon-view/cell-feature.types';
 import { InfoService } from '../info.service';
 import { TranslationService } from '../translation.service';
-import { isMissingValue, isSpatialOrIdentifierKey } from '../attribute-filters';
+import { compareMissingLast, isSpatialOrIdentifierKey } from '../attribute-filters';
 
 export interface AttributeStats {
   key: string;
@@ -574,22 +574,7 @@ export class FurtherAttributesPanelComponent implements OnChanges {
 
   private sortData(): void {
     const col = this.sortColumn;
-    const asc = this.sortAsc ? 1 : -1;
-
-    this.filteredAttributes.sort((a, b) => {
-      const valA = a[col];
-      const valB = b[col];
-
-      // Missing values (NaN, null, "nan", ...) always last, whichever direction is sorted.
-      const missA = isMissingValue(valA);
-      const missB = isMissingValue(valB);
-      if (missA || missB) return missA === missB ? 0 : (missA ? 1 : -1);
-
-      if (typeof valA === 'number' && typeof valB === 'number') {
-        return (valA - valB) * asc;
-      }
-      return String(valA).localeCompare(String(valB), undefined, { numeric: true }) * asc;
-    });
+    this.filteredAttributes.sort((a, b) => compareMissingLast(a[col], b[col], this.sortAsc));
   }
 
   selectAttribute(attr: AttributeStats): void {
