@@ -39,6 +39,7 @@ import { CellFeature } from '../hexagon-view/cell-feature.types';
 import { SpotShape } from '../hexagon-view/spot-geometry';
 import { isSpatialOrIdentifierKey, isUninformativeAttribute } from '../attribute-filters';
 import { categoricalScale, ensurePaletteCovers } from '../categorical-palette';
+import { PADJ_LEGEND_LABEL, PADJ_NEGLOG_CLIP, isPadjColumn, padjToNegLog10 } from '../padj-transform';
 
 // Material
 import { MatButtonModule } from '@angular/material/button';
@@ -302,6 +303,18 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
   public selectedItemByView: { [view: string]: string | null } = {};
   public selectedItemByViewCompare: { [view: string]: string | null } = {};
+
+  /** Last obsm column loaded into each view's map property (e.g. tf_activity -> 'tf_activity_padj_ulm').
+   * Score and padj columns share one property, so this is how the map knows a view holds padj. */
+  private loadedColumnByView: { [view: string]: string } = {};
+  private loadedColumnByViewCompare: { [view: string]: string } = {};
+
+  /** True when the map is currently coloured by an adjusted p-value column (shown as -log10). */
+  public isPadjView(compare: boolean = false, view?: string): boolean {
+    const v = view ?? (compare ? this.selectedCompareView : this.selectedView);
+    const col = (compare ? this.loadedColumnByViewCompare : this.loadedColumnByView)[v];
+    return isPadjColumn(col);
+  }
 
   public regulatoryScoreDisplayMode: 'raw' | 'moranI' | 'gearyC' = 'raw';
   public regulatoryScoreDisplayModeCompare: 'raw' | 'moranI' | 'gearyC' = 'raw';
@@ -2258,6 +2271,9 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.leidenCentralityProps.includes(view)) {
       return this.getLeidenClusterAnnotation(feature.properties.leiden, isCompare)?.centrality?.[view];
     }
+    if (this.isPadjView(isCompare, view)) {
+      return padjToNegLog10(feature.properties[view]);
+    }
     return feature.properties[view];
   }
 
@@ -2525,6 +2541,9 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     const sourceFeatures = Array.isArray(features)
       ? features
       : (compare ? this.compareFeatures : this.features) || [];
+
+    // -log10(padj) is always a continuous scale (even when the raw padj is all 0 / few integers).
+    if (this.isPadjView(compare, property)) return true;
 
     // Memoized: this is reached from template bindings (isActiveCategorical, categoricalProperties,
     // ...), i.e. on every change-detection pass, and scanning every cell each time cost ~150 ms per
@@ -2798,6 +2817,13 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         max = 1;
       }
 
+      // -log10(padj): clip the colour scale at PADJ_NEGLOG_CLIP so a few huge values (exact
+      // zeros -> 300) do not flatten the map; the legend maximum then reads ">=" the clip.
+      if (this.isPadjView(!isMainView, viewToUse)) {
+        max = Math.min(max, PADJ_NEGLOG_CLIP);
+        min = Math.min(min, max);
+      }
+
       // Legend shows the real value range of this view.
       viewVariablesToUpdate.setLegendDomain([min, max]);
       viewVariablesToUpdate.setLegendType('continuous');
@@ -2815,7 +2841,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       const span = max - min;
       fillOf = (d) => {
         const n = this.toNumber(this.extractViewValue(d, viewToUse, !isMainView));
-        return Number.isFinite(n) ? continuous((n - min) / span) : '#ccc';
+        return Number.isFinite(n) ? continuous(Math.min(1, Math.max(0, (n - min) / span))) : '#ccc';
       };
     } else {
       // categorical scale
@@ -4414,6 +4440,9 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     const token = this.nextRequestToken(tokenType);
     const safeIndex = encodeURIComponent(index);
     const isGeneExpression = columnName === 'gene_expression';
+    if (view) {
+      (compare ? this.loadedColumnByViewCompare : this.loadedColumnByView)[view] = columnName;
+    }
 
     // Determine the property name to update based on the view
     // If view is provided, use it; otherwise default to 'regulatory_scores' for backward compatibility
@@ -4723,7 +4752,9 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     const titleText = this.translationService.translateSync(viewVariablesToUpdate.view);
-    const legendTitle = titleText && String(titleText).trim() ? titleText : this.label(viewVariablesToUpdate.view);
+    let legendTitle = titleText && String(titleText).trim() ? titleText : this.label(viewVariablesToUpdate.view);
+    const padjLegend = this.isPadjView(!viewVariablesToUpdate.isMainView, viewVariablesToUpdate.view);
+    if (padjLegend) legendTitle = `${legendTitle} ${PADJ_LEGEND_LABEL}`;
 
     let legendInfo: MapLegendInfo | null = null;
 
@@ -4743,7 +4774,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         title: legendTitle,
         type: 'continuous',
         minText: this.formatLegendNumber(min ?? 0),
-        maxText: this.formatLegendNumber(max ?? 0),
+        maxText: (padjLegend && (max ?? 0) >= PADJ_NEGLOG_CLIP ? '\u2265 ' : '') + this.formatLegendNumber(max ?? 0),
         gradientStops,
       };
     } else {

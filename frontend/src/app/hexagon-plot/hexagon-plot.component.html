@@ -15,7 +15,7 @@
     <!-- Main Dataset View Box -->
     <div class="dataset-view-box main-view-box">
       <div class="map-column">
-        <app-hexagon-view #mainView [isCompare]="false" [selectedCell]="selectedCell" [selectedView]="selectedView"
+        <app-hexagon-view #mainView [isCompare]="false" [selectedCell]="selectedCell" [selectedView]="selectedView" [padjTransform]="isPadjView(false)"
           [legendInfo]="mainLegendInfo" [isInitializing]="isInitializing" [isLoadingMap]="isLoadingHexagons"
           [groupedProperties]="groupedProperties" [selectedDataset]="selectedDataset"
           [builtinDatasets$]="builtinDatasets$" [uploadedDatasets$]="uploadedDatasets$"
@@ -374,7 +374,7 @@
     <div class="dataset-view-box compare-view-box" *ngIf="compareMode">
       <div class="map-column">
         <app-hexagon-view #compareView [isCompare]="true" [selectedCell]="selectedCellCompare"
-          [selectedView]="selectedCompareView" [legendInfo]="compareLegendInfo" [isInitializing]="isInitializing"
+          [selectedView]="selectedCompareView" [padjTransform]="isPadjView(true)" [legendInfo]="compareLegendInfo" [isInitializing]="isInitializing"
           [isLoadingMap]="isLoadingCompare" [groupedProperties]="groupedPropertiesCompare"
           [selectedDataset]="selectedDatasetCompare" [builtinDatasets$]="builtinDatasets$"
           [uploadedDatasets$]="uploadedDatasets$" [tangramDatasets$]="tangram_Datasets$"

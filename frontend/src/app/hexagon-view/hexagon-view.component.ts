@@ -15,6 +15,7 @@ import { TranslatePipe } from '../translate.pipe';
 import { Dataset } from '../datasets.service';
 import { CellFeature } from './cell-feature.types';
 import { SpotShape, makeSpotPathGenerator, measureSpotLayout, typicalSpotDiameter } from './spot-geometry';
+import { padjToNegLog10 } from '../padj-transform';
 
 export interface HexHoverInfo {
   barcode: string;
@@ -97,6 +98,8 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
   /** This instance's own currently-selected cell, for the mouseLeave highlight-suppression check. */
   @Input() selectedCell: CellFeature | null = null;
   @Input() selectedView = '';
+  /** Map is coloured by -log10(padj): the hover tooltip shows that transform, not the raw padj. */
+  @Input() padjTransform = false;
   @Input() legendInfo: MapLegendInfo | null = null;
   public isLegendCollapsed = false;
   /**
@@ -703,9 +706,10 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
       .attr('stroke', '#000')
       .attr('stroke-width', strokeWidth);
 
-    const rawValue = this.lastRenderCtx?.leidenCentralityProps.includes(this.selectedView)
+    let rawValue = this.lastRenderCtx?.leidenCentralityProps.includes(this.selectedView)
       ? this.lastRenderCtx.leidenClusterAnnotations?.[String(d.properties?.leiden)]?.centrality?.[this.selectedView]
       : d.properties?.[this.selectedView];
+    if (this.padjTransform) rawValue = padjToNegLog10(rawValue);
 
     const propLabel = this.legendInfo?.title || this.selectedView || 'Value';
 
