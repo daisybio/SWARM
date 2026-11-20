@@ -9,7 +9,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import * as Plotly from 'plotly.js-dist-min';
 import * as d3 from 'd3';
-import { extendedPalette } from '../categorical-palette';
+import { extendedPalette, LEIDEN_CLUSTER_PALETTE } from '../categorical-palette';
 import { describeApiError } from '../api-error';
 import { CellFeature } from '../hexagon-view/cell-feature.types';
 
@@ -303,11 +303,11 @@ export class SpatialCorrelationPanelComponent implements OnInit, OnChanges {
       `<i>Click to highlight on map</i>`
     );
 
-    // Category10 first, then generated colors (extendedPalette), so cluster ids >= 10 no longer
-    // wrap around onto the colors of clusters 0-9.
+    // Same palette as the map's Leiden view (LEIDEN_CLUSTER_PALETTE, extended without repeats), so
+    // cluster N has the same color here as on the map.
     const clusterNums = data.map(d => parseInt(d.cluster, 10));
     const maxCluster = clusterNums.reduce((m, c) => (!isNaN(c) && c > m ? c : m), 0);
-    const colorPalette = extendedPalette(d3.schemeCategory10, maxCluster + 1);
+    const colorPalette = extendedPalette(LEIDEN_CLUSTER_PALETTE, maxCluster + 1);
     const markerColors = clusterNums.map(cNum => (!isNaN(cNum) && cNum >= 0 ? colorPalette[cNum] : '#1976d2'));
 
     const traces: Partial<Plotly.PlotData>[] = [

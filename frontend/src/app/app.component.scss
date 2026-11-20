@@ -201,7 +201,7 @@
 
 .sidenav button {
   position: absolute;
-  color: #ff9800;
+  color: var(--swarm-primary);
   font-weight: bold;
   transition: all 0.2s ease;
   top: 15px;

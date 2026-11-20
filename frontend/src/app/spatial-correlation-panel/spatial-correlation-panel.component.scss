@@ -5,14 +5,14 @@
   gap: 16px;
   background: #ffffff;
   min-height: 100%;
-  color: #1e293b;
+  color: var(--swarm-text);
   font-family: inherit;
 
   .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--swarm-border);
     padding-bottom: 12px;
     flex-wrap: wrap;
     gap: 12px;
@@ -23,7 +23,7 @@
       gap: 8px;
 
       .header-icon {
-        color: #ff9800;
+        color: var(--swarm-primary);
         font-size: 22px;
         width: 22px;
         height: 22px;
@@ -33,7 +33,7 @@
         margin: 0;
         font-size: 1.15rem;
         font-weight: 600;
-        color: #1e293b;
+        color: var(--swarm-text);
       }
     }
 
@@ -43,9 +43,9 @@
       gap: 10px;
 
       button.mat-icon-button {
-        color: #64748b;
+        color: var(--swarm-muted);
         &:hover {
-          color: #ff9800;
+          color: var(--swarm-primary);
         }
       }
     }
@@ -53,7 +53,7 @@
 
   .matrix-card {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--swarm-border);
     border-radius: 8px;
     padding: 16px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -64,14 +64,14 @@
       gap: 12px;
       padding: 24px;
       justify-content: center;
-      color: #64748b;
+      color: var(--swarm-muted);
       font-size: 0.9rem;
     }
 
     .empty-matrix {
       text-align: center;
       padding: 32px;
-      color: #94a3b8;
+      color: var(--swarm-subtle);
       font-size: 0.9rem;
     }
 
@@ -91,8 +91,8 @@
     justify-content: center;
     text-align: center;
     padding: 48px 24px;
-    background: #f8fafc;
-    border: 2px dashed #e2e8f0;
+    background: var(--swarm-bg-soft);
+    border: 2px dashed var(--swarm-border);
     border-radius: 12px;
     margin: 8px 0;
     gap: 12px;
@@ -101,19 +101,19 @@
       font-size: 48px;
       width: 48px;
       height: 48px;
-      color: #ff9800 !important;
+      color: var(--swarm-primary) !important;
       opacity: 0.85;
     }
 
     .empty-state-title {
       font-size: 1.15rem;
       font-weight: 600;
-      color: #1e293b !important;
+      color: var(--swarm-text) !important;
     }
 
     .empty-state-message {
       font-size: 0.9rem;
-      color: #64748b !important;
+      color: var(--swarm-muted) !important;
       max-width: 360px;
       line-height: 1.5;
     }
@@ -121,7 +121,7 @@
 
   .detail-box {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--swarm-border);
     border-radius: 8px;
     padding: 16px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -137,17 +137,17 @@
         align-items: center;
         flex-wrap: wrap;
         gap: 12px;
-        border-bottom: 1px solid #f1f5f9;
+        border-bottom: 1px solid var(--swarm-bg-hover);
         padding-bottom: 10px;
 
         .pair-title h4 {
           margin: 0;
           font-size: 1.05rem;
           font-weight: 600;
-          color: #1e293b;
+          color: var(--swarm-text);
 
           .vs-label {
-            color: #94a3b8;
+            color: var(--swarm-subtle);
             font-weight: 400;
             padding: 0 4px;
           }
@@ -199,7 +199,7 @@
             flex: 1 1 100%;
             min-width: 320px;
             height: 340px;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--swarm-border);
             border-radius: 8px;
             padding: 6px;
             background-color: #ffffff;
@@ -212,16 +212,16 @@
             flex-direction: column;
             gap: 10px;
             padding: 16px;
-            background-color: #f8fafc;
-            border: 1px solid #e2e8f0;
+            background-color: var(--swarm-bg-soft);
+            border: 1px solid var(--swarm-border);
             border-radius: 8px;
 
             h5 {
               margin: 0 0 4px 0;
               font-size: 0.95rem;
               font-weight: 600;
-              color: #1e293b;
-              border-bottom: 1px solid #e2e8f0;
+              color: var(--swarm-text);
+              border-bottom: 1px solid var(--swarm-border);
               padding-bottom: 8px;
             }
 
@@ -231,13 +231,13 @@
               font-size: 0.85rem;
 
               .stat-label {
-                color: #64748b;
+                color: var(--swarm-muted);
                 font-weight: 500;
               }
 
               .stat-value {
                 font-weight: 600;
-                color: #1e293b;
+                color: var(--swarm-text);
                 font-variant-numeric: tabular-nums;
 
                 &.highlight {
@@ -253,7 +253,7 @@
               gap: 8px;
               margin-top: 10px;
               padding-top: 10px;
-              border-top: 1px solid #e2e8f0;
+              border-top: 1px solid var(--swarm-border);
 
               .action-btn-primary {
                 width: 100%;
@@ -266,7 +266,7 @@
                 padding: 6px 12px;
                 border-radius: 6px;
                 border: none;
-                background: linear-gradient(135deg, #ff9800 0%, #ffa726 100%);
+                background: linear-gradient(135deg, var(--swarm-primary) 0%, #ffa726 100%);
                 color: #ffffff;
                 cursor: pointer;
                 box-shadow: 0 1px 3px rgba(255, 152, 0, 0.25);
@@ -294,8 +294,8 @@
                 font-weight: 600;
                 padding: 6px 12px;
                 border-radius: 6px;
-                border: 1px solid #ff9800;
-                background: #fff8eb;
+                border: 1px solid var(--swarm-primary);
+                background: var(--swarm-accent-soft);
                 color: #d97706;
                 cursor: pointer;
                 transition: all 0.15s ease;
@@ -328,7 +328,7 @@
             // look meaningfully different depending on which panel it's shown in).
             flex: 0 0 280px;
             padding: 10px;
-            background-color: #f8fafc;
+            background-color: var(--swarm-bg-soft);
             border: 1px solid #cbd5e1;
             border-radius: 8px;
 
@@ -353,7 +353,7 @@
               min-width: 0;
               aspect-ratio: 1 / 1;
               background: #ffffff;
-              border: 1px solid #e2e8f0;
+              border: 1px solid var(--swarm-border);
               border-radius: 8px;
               overflow: hidden;
 
@@ -376,7 +376,7 @@
 
               .axis-label-y, .axis-label-x {
                 font-size: 0.62rem;
-                color: #64748b;
+                color: var(--swarm-muted);
                 font-weight: 600;
                 text-align: center;
               }

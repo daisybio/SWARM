@@ -16,6 +16,27 @@ body {
   font-family: Roboto, "Helvetica Neue", sans-serif;
 }
 
+/* ------------------------------------------------------------------------------------------
+   Global design tokens. Components should reference these instead of hard-coding hex values
+   (filterable-table already does). Brand = orange/yellow Material override below; neutrals =
+   the slate scale already used across panels.
+   ------------------------------------------------------------------------------------------ */
+:root {
+  --swarm-primary: #ff9800;
+  --swarm-primary-hover: #f59e0b;
+  --swarm-accent: #fabc36;
+  --swarm-accent-soft: #fff8eb;
+  --swarm-accent-border: #fde68a;
+  --swarm-text: #1e293b;
+  --swarm-muted: #64748b;
+  --swarm-subtle: #94a3b8;
+  --swarm-border: #e2e8f0;
+  --swarm-bg-card: #ffffff;
+  --swarm-bg-soft: #f8fafc;
+  --swarm-bg-hover: #f1f5f9;
+  --swarm-info: #2563eb;
+}
+
 /* Override Material Theme to Orange and Yellow */
 
 /* Primary color - Orange for buttons with black text */
@@ -28,7 +49,7 @@ body {
 
   &.mdc-button--raised,
   &.mdc-button--unelevated {
-    background-color: #ff9800 !important;
+    background-color: var(--swarm-primary) !important;
     color: black !important;
   }
 }
@@ -43,7 +64,7 @@ body {
 
   &.mdc-button--raised,
   &.mdc-button--unelevated {
-    background-color: #fabc36 !important;
+    background-color: var(--swarm-accent) !important;
     color: black !important;
   }
 }
@@ -99,16 +120,16 @@ body {
 }
 
 .mdc-tab-indicator__content--underline {
-  border-bottom-color: #fabc36 !important;
+  border-bottom-color: var(--swarm-accent) !important;
 }
 
 .mat-mdc-tab-header-pagination::before {
-  border-color: #fabc36 !important;
+  border-color: var(--swarm-accent) !important;
 }
 
 /* Button toggles (mat-button-toggle-group) - orange selected state, everywhere */
 .mat-button-toggle-checked {
-  background-color: #ff9800 !important;
+  background-color: var(--swarm-primary) !important;
 
   .mat-button-toggle-label-content {
     color: white !important;
@@ -117,7 +138,7 @@ body {
 
 /* Icons - orange for primary, yellow only for icons/svgs */
 .mat-primary {
-  color: #ff9800 !important;
+  color: var(--swarm-primary) !important;
 }
 
 /* Accent color for icons/svgs only - not text */
@@ -216,7 +237,7 @@ svg.mat-accent {
   }
 
   .mat-mdc-select-arrow {
-    color: #ff9800 !important;
+    color: var(--swarm-primary) !important;
   }
 }
 
@@ -333,7 +354,7 @@ body,
     background: linear-gradient(135deg, #fffef9 0%, #fff9f0 100%);
     border-radius: 0px;
     box-shadow: 0 8px 32px rgba(255, 152, 0, 0.25), 0 0 0 1px rgba(255, 152, 0, 0.1);
-    border: 3px solid #ff9800;
+    border: 3px solid var(--swarm-primary);
     color: #1a1a1a;
     font-family: 'Varela Round', 'Fredoka', sans-serif;
     overflow: visible;
@@ -378,7 +399,7 @@ body,
 
   /* Title styling */
   .shepherd-title {
-    background: linear-gradient(135deg, #ff9800 0%, #ffb74d 50%, #ffca28 100%);
+    background: linear-gradient(135deg, var(--swarm-primary) 0%, #ffb74d 50%, #ffca28 100%);
     color: #1a1a1a;
     font-size: 1.4rem;
     font-weight: 700;
@@ -526,7 +547,7 @@ body,
 
   /* Arrow styling */
   .shepherd-arrow {
-    border-color: #ff9800;
+    border-color: var(--swarm-primary);
     filter: drop-shadow(0 4px 8px rgba(255, 152, 0, 0.2));
   }
 
@@ -592,7 +613,7 @@ body,
   .shepherd-button:not(:last-child) {
     background: transparent;
     color: #1a1a1a;
-    border: 3px solid #ff9800;
+    border: 3px solid var(--swarm-primary);
     box-shadow: none;
 
     &:hover {
@@ -608,7 +629,7 @@ body,
   }
 
   .shepherd-button:last-child:hover {
-    background: linear-gradient(135deg, #ffb74d 0%, #ff9800 100%);
+    background: linear-gradient(135deg, #ffb74d 0%, var(--swarm-primary) 100%);
     box-shadow: 0 8px 24px rgba(255, 152, 0, 0.4);
   }
 }
@@ -649,7 +670,7 @@ body,
     width: 16px !important;
     height: 16px !important;
     line-height: 16px !important;
-    color: #94a3b8 !important;
+    color: var(--swarm-subtle) !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -663,6 +684,10 @@ body,
       color: #2563eb !important;
     }
   }
+}
+
+.hx-info-btn--end {
+  margin-left: auto !important;
 }
 
 .hx-header-info-btn {
@@ -690,7 +715,7 @@ body,
     width: 18px !important;
     height: 18px !important;
     line-height: 18px !important;
-    color: #64748b !important;
+    color: var(--swarm-muted) !important;
   }
 
   &:hover {
@@ -708,8 +733,8 @@ body,
   font-size: 0.78rem !important;
   line-height: 1.4 !important;
   padding: 8px 12px !important;
-  background-color: #1e293b !important;
-  color: #f8fafc !important;
+  background-color: var(--swarm-text) !important;
+  color: var(--swarm-bg-soft) !important;
   border-radius: 6px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
   white-space: normal !important;

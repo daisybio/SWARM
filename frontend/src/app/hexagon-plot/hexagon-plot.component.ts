@@ -38,7 +38,7 @@ import { LiveCorrelationDrawerComponent } from '../live-correlation-drawer/live-
 import { CellFeature } from '../hexagon-view/cell-feature.types';
 import { SpotShape } from '../hexagon-view/spot-geometry';
 import { isSpatialOrIdentifierKey, isUninformativeAttribute } from '../attribute-filters';
-import { categoricalScale, ensurePaletteCovers } from '../categorical-palette';
+import { categoricalScale, ensurePaletteCovers, LEIDEN_CLUSTER_PALETTE } from '../categorical-palette';
 import { PADJ_LEGEND_LABEL, PADJ_NEGLOG_CLIP, isPadjColumn, padjToNegLog10 } from '../padj-transform';
 
 // Material
@@ -62,34 +62,7 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { MatInputModule } from '@angular/material/input';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 
-export const LEIDEN_CLUSTER_PALETTE: string[] = [
-  '#ff9800', // 0: Orange
-  '#4caf50', // 1: Green
-  '#1976d2', // 2: Blue
-  '#9c27b0', // 3: Purple
-  '#00bcd4', // 4: Cyan
-  '#ff5722', // 5: Deep Coral / Red-Orange
-  '#8bc34a', // 6: Light Lime Green
-  '#e91e63', // 7: Magenta / Pink
-  '#009688', // 8: Teal
-  '#ffa726', // 9: Gold / Amber
-  '#673ab7', // 10: Deep Purple
-  '#039be5', // 11: Sky Blue
-  '#cddc39', // 12: Lime
-  '#d81b60', // 13: Ruby / Dark Pink
-  '#26a69a', // 14: Mint
-  '#f57c00', // 15: Tangerine
-  '#3f51b5', // 16: Indigo
-  '#795548', // 17: Warm Brown
-  '#00acc1', // 18: Dark Turquoise
-  '#607d8b', // 19: Slate Grey
-  '#8e24aa', // 20: Dark Orchid
-  '#43a047', // 21: Forest Green
-  '#ffb300', // 22: Yellow Amber
-  '#5e35b1', // 23: Dark Violet
-  '#8d6e63', // 24: Sienna
-  '#78909c', // 25: Steel Grey
-];
+export { LEIDEN_CLUSTER_PALETTE };
 
 /** The two-level tab grouping: each entry is one outer category tab, `tabs` lists the actual
  * (inner) tab labels it contains, in display order. Order here must match the template's outer

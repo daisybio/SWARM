@@ -28,6 +28,37 @@ import * as d3 from 'd3';
  * difference, below ~7 two small map patches are easily confused.
  */
 
+/** Base palette for Leiden cluster ids; the single source of cluster colors across the map and
+ * the correlation panels (extended without repeats via `extendedPalette`). */
+export const LEIDEN_CLUSTER_PALETTE: string[] = [
+  '#ff9800', // 0: Orange
+  '#4caf50', // 1: Green
+  '#1976d2', // 2: Blue
+  '#9c27b0', // 3: Purple
+  '#00bcd4', // 4: Cyan
+  '#ff5722', // 5: Deep Coral / Red-Orange
+  '#8bc34a', // 6: Light Lime Green
+  '#e91e63', // 7: Magenta / Pink
+  '#009688', // 8: Teal
+  '#ffa726', // 9: Gold / Amber
+  '#673ab7', // 10: Deep Purple
+  '#039be5', // 11: Sky Blue
+  '#cddc39', // 12: Lime
+  '#d81b60', // 13: Ruby / Dark Pink
+  '#26a69a', // 14: Mint
+  '#f57c00', // 15: Tangerine
+  '#3f51b5', // 16: Indigo
+  '#795548', // 17: Warm Brown
+  '#00acc1', // 18: Dark Turquoise
+  '#607d8b', // 19: Slate Grey
+  '#8e24aa', // 20: Dark Orchid
+  '#43a047', // 21: Forest Green
+  '#ffb300', // 22: Yellow Amber
+  '#5e35b1', // 23: Dark Violet
+  '#8d6e63', // 24: Sienna
+  '#78909c', // 25: Steel Grey
+];
+
 type Lab = [number, number, number];
 
 /** Colors the generated ones must stay away from but that are never emitted themselves. */

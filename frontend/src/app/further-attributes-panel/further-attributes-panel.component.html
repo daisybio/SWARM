@@ -144,7 +144,7 @@
               <div class="attr-label-row">
                 <span class="attr-label" [title]="attr.key">{{ attr.label }}</span>
                 <span *ngIf="attr.key === selectedAttribute" class="active-badge">Active</span>
-                <button *ngIf="attr.description" mat-icon-button type="button" class="field-help-btn"
+                <button *ngIf="attr.description" mat-icon-button type="button" class="hx-info-btn"
                   [matTooltip]="attr.description" matTooltipPosition="above" (click)="$event.stopPropagation()">
                   <mat-icon>help_outline</mat-icon>
                 </button>

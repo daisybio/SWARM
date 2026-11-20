@@ -45,7 +45,7 @@
 
       &:focus {
         outline: none;
-        border-color: #ff9800;
+        border-color: var(--swarm-primary);
         box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.1);
       }
     }
@@ -77,19 +77,19 @@
   margin: 16px 0;
   border-radius: 8px;
   background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--swarm-border);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .co-occurrence-table {
   width: 100%;
   border-collapse: collapse;
-  color: #1e293b;
+  color: var(--swarm-text);
   font-size: 0.83rem;
 
   thead {
-    background: #f8fafc;
-    border-bottom: 2px solid #e2e8f0;
+    background: var(--swarm-bg-soft);
+    border-bottom: 2px solid var(--swarm-border);
 
     th {
       padding: 9px 12px;
@@ -103,11 +103,11 @@
 
   tbody {
     tr {
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid var(--swarm-bg-hover);
       transition: background 0.15s ease;
 
       &:hover {
-        background-color: #f8fafc;
+        background-color: var(--swarm-bg-soft);
       }
 
       &:last-child {
@@ -122,7 +122,7 @@
 
         &:first-child {
           font-weight: 600;
-          color: #1e293b;
+          color: var(--swarm-text);
           text-align: left;
         }
       }
@@ -133,10 +133,10 @@
 .no-data {
   padding: 24px;
   text-align: center;
-  background: #f8fafc;
+  background: var(--swarm-bg-soft);
   border: 1px dashed #cbd5e1;
   border-radius: 8px;
-  color: #64748b;
+  color: var(--swarm-muted);
   font-weight: 500;
   margin: 16px 0;
 }
@@ -159,7 +159,7 @@
     transition: all 0.2s ease;
 
     &:hover:not(:disabled) {
-      background: #ff9800;
+      background: var(--swarm-primary);
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
     }

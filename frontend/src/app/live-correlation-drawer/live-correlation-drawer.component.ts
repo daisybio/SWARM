@@ -17,7 +17,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import * as Plotly from 'plotly.js-dist-min';
 import * as d3 from 'd3';
-import { extendedPalette } from '../categorical-palette';
+import { extendedPalette, LEIDEN_CLUSTER_PALETTE } from '../categorical-palette';
 import { describeApiError, isExplanatoryApiError } from '../api-error';
 import { CellFeature } from '../hexagon-view/cell-feature.types';
 
@@ -193,8 +193,10 @@ export class LiveCorrelationDrawerComponent implements OnChanges, OnDestroy {
     // color for cell_type labels like "B cell", since those aren't valid CSS color names either.
     // Map each distinct cluster to its own color from a qualitative palette instead.
     const distinctClusters = Array.from(new Set<string>(clusters));
-    // extendedPalette: Set2 first, then generated colors, so clusters beyond the 8th don't reuse one.
-    const clusterColorScale = d3.scaleOrdinal<string>(extendedPalette(d3.schemeSet2, distinctClusters.length))
+    // Same palette as the map's Leiden view; sorted (numeric-aware) so cluster N gets the same color
+    // as on the map regardless of the order the points arrive in.
+    distinctClusters.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const clusterColorScale = d3.scaleOrdinal<string>(extendedPalette(LEIDEN_CLUSTER_PALETTE, distinctClusters.length))
       .domain(distinctClusters);
     const pointColors = clusters.map((c: string) => clusterColorScale(c));
 

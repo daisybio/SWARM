@@ -63,7 +63,7 @@
 
   .initialization-message {
     font-size: 1rem;
-    color: #64748b;
+    color: var(--swarm-muted);
     font-weight: 500;
     letter-spacing: 0.3px;
     margin: 0;
@@ -248,7 +248,7 @@
 }
 
 #compare-button, #live-corr-button, #same-scale-button {
-  background-color: #fabc36;
+  background-color: var(--swarm-accent);
   color: #fff;
   font-weight: 700;
   cursor: pointer;
@@ -350,10 +350,10 @@ select {
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  background: #f8fafc;
+  background: var(--swarm-bg-soft);
   padding: 8px 12px;
   border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--swarm-border);
   gap: 8px;
 }
 
@@ -369,7 +369,7 @@ select {
     flex-shrink: 0;
     font-size: 0.95rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--swarm-text);
     letter-spacing: 0.3px;
   }
 }
@@ -394,7 +394,7 @@ select {
   background-color: #fff9e6;
   padding: 5px 10px;
   border-radius: 4px;
-  border-left: 3px solid #ff9800;
+  border-left: 3px solid var(--swarm-primary);
   width: 100%;
 
   strong {
@@ -404,7 +404,7 @@ select {
 
   .default-gene-note {
     font-size: 0.78rem;
-    color: #94a3b8;
+    color: var(--swarm-subtle);
     font-style: italic;
     margin-left: 6px;
   }
@@ -417,8 +417,8 @@ select {
   flex-direction: column;
   gap: 6px;
   padding: 8px 0;
-  border-top: 1px solid #e2e8f0;
-  border-bottom: 1px solid #e2e8f0;
+  border-top: 1px solid var(--swarm-border);
+  border-bottom: 1px solid var(--swarm-border);
 }
 
 .control-row {
@@ -448,7 +448,7 @@ select {
       width: 16px;
       height: 16px;
       border-radius: 50%;
-      background: #ff9800;
+      background: var(--swarm-primary);
       cursor: pointer;
       box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
     }
@@ -457,7 +457,7 @@ select {
       width: 16px;
       height: 16px;
       border-radius: 50%;
-      background: #ff9800;
+      background: var(--swarm-primary);
       cursor: pointer;
       border: none;
       box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
@@ -466,7 +466,7 @@ select {
 
   .helper {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--swarm-subtle);
 
     &.small {
       margin-top: 2px;
@@ -483,7 +483,7 @@ select {
 .gprofiler-btn {
   padding: 6px 12px;
   font-size: 0.85rem;
-  background-color: #ff9800;
+  background-color: var(--swarm-primary);
   color: white;
   border: none;
   border-radius: 4px;
@@ -507,7 +507,7 @@ select {
   font-size: 13px;
   color: #555;
   padding: 4px 8px;
-  background-color: #f8fafc;
+  background-color: var(--swarm-bg-soft);
   border-radius: 4px;
   width: 100%;
 }
@@ -587,10 +587,10 @@ select {
 .network-message {
   padding: 24px 16px;
   text-align: center;
-  color: #64748b;
+  color: var(--swarm-muted);
   font-size: 0.9rem;
   line-height: 1.4;
-  background-color: #f1f5f9;
+  background-color: var(--swarm-bg-hover);
   border-radius: 6px;
   border: 1px dashed #cbd5e1;
   min-height: 150px;
@@ -611,7 +611,7 @@ select {
     color: #1a1a1a;
     margin: 20px 0 24px 0;
     padding-bottom: 12px;
-    border-bottom: 2px solid #ff9800;
+    border-bottom: 2px solid var(--swarm-primary);
   }
 
   h3 {
@@ -759,13 +759,13 @@ select {
   // live-correlation-drawer's .metric-card.highlight); plain white for the inner real-tab bar
   // keeps it visually part of the white content below it, just with its own crisp divider.
   ::ng-deep .category-tab-group > .mat-mdc-tab-header {
-    background: #fff8eb;
-    border-bottom: 1px solid #fde68a;
+    background: var(--swarm-accent-soft);
+    border-bottom: 1px solid var(--swarm-accent-border);
   }
 
   ::ng-deep .mat-mdc-tab-body-content > mat-tab-group > .mat-mdc-tab-header {
     background: #ffffff;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--swarm-border);
   }
 }
 
