@@ -388,6 +388,20 @@ cookie = SessionCookie(
 )
 backend = InMemoryBackend[UUID, SessionData]()
 
+
+async def _read_or_restore_session(session_id: UUID) -> "SessionData":
+    """Return the session for this cookie, recreating it if the in-memory store lost it.
+
+    Sessions live in an InMemoryBackend, so a backend restart drops them while the browser
+    keeps its cookie; backend.read() then returns None. The username is the session id, so
+    restoring under the same id keeps ownership checks (owner == username) intact.
+    """
+    session_data = await backend.read(session_id)
+    if session_data is None:
+        session_data = SessionData(username=str(session_id))
+        await backend.create(session_id, session_data)
+    return session_data
+
 verifier = BasicVerifier(
     identifier="general_verifier",
     auto_error=True,
@@ -1174,7 +1188,7 @@ async def cleanup_expired_sessions():
 @app.post("/reset_session")
 async def reset_session(session_id: UUID = Depends(cookie)):
     """Call this on page reload to clear old data"""
-    session_data = await backend.read(session_id)
+    session_data = await _read_or_restore_session(session_id)
     # Reset all data except username
     session_data.adata_path = None
     session_data.genie_network_path = None
@@ -2600,7 +2614,7 @@ async def read_adata(
     -d '{"path": "data/adata.h5ad"}'
     ```
     """
-    session_data = await backend.read(session_id)
+    session_data = await _read_or_restore_session(session_id)
 
     session_data.adata_path = adata_path.path
 
@@ -2648,7 +2662,7 @@ async def read_network_genie(
     ```
     """
 
-    session_data = await backend.read(session_id)
+    session_data = await _read_or_restore_session(session_id)
 
     if genie_network_path.path and not os.path.exists(genie_network_path.path):
         raise HTTPException(status_code=400, detail="TF-GRN network file not found")
@@ -2673,7 +2687,7 @@ async def read_network_sponge(sponge_network_path: SpongeNetworksPath, session_i
     -d '{"path": "data/sponge_network.json"}'
     ```
      """
-    session_data = await backend.read(session_id)
+    session_data = await _read_or_restore_session(session_id)
 
     if sponge_network_path.path and not os.path.exists(sponge_network_path.path):
         raise HTTPException(status_code=400, detail="Sponge network file not found")
