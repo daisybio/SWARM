@@ -73,6 +73,9 @@ export class GeneSymbolService {
   /** lower-cased symbol -> symbol, from the symbol maps; null marks a casing conflict. */
   private readonly symbolsByLower = new Map<string, string | null>();
 
+  /** Organism of the current dataset ("human" | "mouse"); null = unspecified, no casing fallback. */
+  private organism: 'human' | 'mouse' | null = null;
+
   /** Name as looked up -> the name the backend resolved it to (X-Gene-Canonical). */
   private readonly lookedUp = new Map<string, string>();
 
@@ -155,6 +158,12 @@ export class GeneSymbolService {
     else if (existing !== null && existing !== symbol) this.symbolsByLower.set(lower, null);
   }
 
+  /** Sets the current dataset's organism (anything but human/mouse clears it). */
+  public setOrganism(organism: string | null | undefined): void {
+    const o = String(organism ?? '').trim().toLowerCase();
+    this.organism = o === 'human' || o === 'mouse' ? o : null;
+  }
+
   /**
    * Records which gene a lookup actually resolved to (the backend's `X-Gene-Canonical` header or
    * `canonical_gene` field), so `label()` shows that casing for the name the user typed/clicked.
@@ -185,7 +194,18 @@ export class GeneSymbolService {
     if (noted) return noted;
     if (!v || v !== v.toLowerCase() || !/[a-z]/.test(v)) return null;
     const symbol = this.symbolsByLower.get(v);
-    return symbol && symbol !== v ? symbol : null;
+    if (symbol && symbol !== v) return symbol;
+    return this.organismCase(v);
+  }
+
+  /**
+   * Fallback when no symbol map knows a lower-case gene name: the organism's convention
+   * (human LAMP5, mouse Lamp5). Only for plain gene-like tokens, and only when the dataset
+   * specifies its organism -- otherwise nothing is invented.
+   */
+  private organismCase(v: string): string | null {
+    if (!this.organism || !/^[a-z][a-z0-9.-]{0,24}$/.test(v) || /^(hsa|mmu)-/.test(v)) return null; // miRNA ids keep their own casing
+    return this.organism === 'human' ? v.toUpperCase() : v.charAt(0).toUpperCase() + v.slice(1);
   }
 
   /** Whether `value` is an Ensembl gene id (and therefore worth translating). */

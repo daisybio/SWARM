@@ -240,12 +240,14 @@ DEFAULT_DATASETS = [
         "alias": "BRCA (Visium)",
         "dir": "data/brca_visium",
         "description": "Pre-configured spatial transcriptomics dataset (BRCA Visium)",
+        "organism": "human",
     },
     {
         "id": "builtin_visual_cortex",
         "alias": "Visual Cortex (Visium)",
         "dir": "data/visual_cortex",
         "description": "Mouse Visual Cortex spatial transcriptomics dataset",
+        "organism": "mouse",
     },
     {
         "id": "builtin_heart_multiome",
@@ -254,6 +256,7 @@ DEFAULT_DATASETS = [
         "config_file": "config.json",
         "geojson_file": "hexagons_measured.geojson",
         "description": "Human Heart Cell Atlas (Multiome - Measured Expression & Scores)",
+        "organism": "human",
     },
     {
         "id": "builtin_heart_tangram",
@@ -262,6 +265,7 @@ DEFAULT_DATASETS = [
         "config_file": "config_tangram.json",
         "geojson_file": "hexagons.geojson",
         "description": "Human Heart Cell Atlas (Multiome - Tangram Projected Expression & ChromVAR)",
+        "organism": "human",
     }
 ]
 
@@ -280,6 +284,7 @@ async def lifespan(app: FastAPI):
         alias = ds_conf["alias"]
         ds_dir = base_path / ds_conf.get("dir", "data")
         description = ds_conf.get("description", "")
+        organism = ds_conf.get("organism")
 
         if not ds_dir.exists():
             print(f"✗ Default dataset dir not found: {ds_dir}")
@@ -299,6 +304,7 @@ async def lifespan(app: FastAPI):
                     dataset_id=dataset_id,
                     alias=alias,
                     description=description,
+                    organism=organism,
                 )
                 continue
             except Exception as e:
@@ -335,6 +341,7 @@ async def lifespan(app: FastAPI):
                 dataset_id=dataset_id,
                 alias=alias,
                 description=description,
+                organism=organism,
             )
             print(f"✓ Registered default dataset {dataset_id} directly from files")
         else:
