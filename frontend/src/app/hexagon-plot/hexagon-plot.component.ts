@@ -36,6 +36,7 @@ import { FurtherAttributesPanelComponent } from '../further-attributes-panel/fur
 import { SpatialCorrelationPanelComponent } from '../spatial-correlation-panel/spatial-correlation-panel.component';
 import { LiveCorrelationDrawerComponent } from '../live-correlation-drawer/live-correlation-drawer.component';
 import { CellFeature } from '../hexagon-view/cell-feature.types';
+import { SpotShape } from '../hexagon-view/spot-geometry';
 import { isSpatialOrIdentifierKey, isUninformativeAttribute } from '../attribute-filters';
 import { categoricalScale, ensurePaletteCovers } from '../categorical-palette';
 
@@ -258,6 +259,17 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
    * density can be compared directly.
    */
   public compareSameScale = false;
+
+  /** Spot shape on both maps (see hexagon-view/spot-geometry.ts); remembered per browser. */
+  public spotShape: SpotShape = HexagonPlotComponent.loadSpotShape();
+
+  private static loadSpotShape(): SpotShape {
+    try {
+      return localStorage.getItem('swarm.spotShape') === 'circle' ? 'circle' : 'hexagon';
+    } catch {
+      return 'hexagon';
+    }
+  }
 
 
   public selectedCell: CellFeature | null = null;
@@ -2155,6 +2167,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       leidenClusterAnnotations: (compare ? this.metaCompare : this.meta)?.['leiden_cluster_annotations'],
       leidenCentralityProps: this.leidenCentralityProps,
       sharedScaleFeatures: this.compareMode && this.compareSameScale && otherFull.length ? otherFull : null,
+      spotShape: this.spotShape,
     };
   }
 
@@ -2172,6 +2185,17 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /** "Same scale" toggle in compare mode (see compareSameScale). */
+  public toggleSpotShape(): void {
+    this.spotShape = this.spotShape === 'hexagon' ? 'circle' : 'hexagon';
+    try {
+      localStorage.setItem('swarm.spotShape', this.spotShape);
+    } catch {
+      /* storage unavailable: the choice just isn't remembered */
+    }
+    this.rerenderMapGeometry(false);
+    this.rerenderMapGeometry(true);
+  }
+
   public toggleCompareSameScale(): void {
     this.compareSameScale = !this.compareSameScale;
     this.rerenderMapGeometry(false);

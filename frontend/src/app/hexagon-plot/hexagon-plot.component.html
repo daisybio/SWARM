@@ -39,6 +39,16 @@
             <mat-icon style="color: black;">compare_arrows</mat-icon>
           </button>
 
+          <!-- Spot shape: circles at the technology's real spot/cell size, or hexagons tiled with a gap. -->
+          <button class="basic-button" id="spot-shape-button" type="button" (click)="toggleSpotShape()"
+            [disabled]="isInitializing"
+            [matTooltip]="spotShape === 'circle'
+              ? 'Spots drawn as circles at their real size (Visium 55 µm on a 100 µm grid, cells by their area). Click for hexagons.'
+              : 'Spots drawn as tiled hexagons. Click for circles at the real spot/cell size.'">
+            <mat-icon style="color: black;">{{ spotShape === 'circle' ? 'circle' : 'hexagon' }}</mat-icon>
+            <span style="color: black; font-weight: 700; margin-left: 4px;">{{ spotShape === 'circle' ? 'Circles' : 'Hexagons' }}</span>
+          </button>
+
           <button *ngIf="compareMode" class="basic-button" id="live-corr-button" (click)="toggleLiveDrawer()"
             [class.active]="isLiveDrawerOpen" matTooltip="Toggle Live Correlation Side Drawer">
             <mat-icon style="color: black;">insights</mat-icon>
