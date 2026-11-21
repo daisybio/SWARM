@@ -306,12 +306,18 @@ export class LiveCorrelationDrawerComponent implements OnChanges, OnDestroy {
     }
     const allX: number[] = coords.x;
     const allY: number[] = coords.y;
-    const minX = Math.min(...allX), maxX = Math.max(...allX);
-    const minY = Math.min(...allY), maxY = Math.max(...allY);
+    // d3.extent, not Math.min(...all): spreading every cell as call arguments throws on big datasets.
+    const [minX, maxX] = d3.extent(allX) as [number, number];
+    const [minY, maxY] = d3.extent(allY) as [number, number];
 
     const width = container.clientWidth || 300;
-    const height = width; // square, matching the real map's own aspect ratio convention
-    const padding = 10;
+    const padding = 8;
+    // Height follows the tissue's own aspect ratio (clamped) instead of a fixed square, so a wide
+    // or narrow section fills the box rather than sitting small in a lot of white.
+    const collection = { type: 'FeatureCollection', features: this.features } as any;
+    const [[bx0, by0], [bx1, by1]] = d3.geoPath(d3.geoIdentity()).bounds(collection);
+    const aspect = bx1 > bx0 ? (by1 - by0) / (bx1 - bx0) : 1;
+    const height = Math.round(width * Math.min(1, Math.max(0.55, aspect)));
 
     d3.select(container).selectAll('svg').remove();
     const svg = d3.select(container)
@@ -322,7 +328,7 @@ export class LiveCorrelationDrawerComponent implements OnChanges, OnDestroy {
 
     const projection = d3.geoIdentity().fitExtent(
       [[padding, padding], [width - padding, height - padding]],
-      { type: 'FeatureCollection', features: this.features } as any,
+      collection,
     );
     const pathGenerator = d3.geoPath<CellFeature>().projection(projection);
 

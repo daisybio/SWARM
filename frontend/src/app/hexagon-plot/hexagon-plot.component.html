@@ -149,7 +149,7 @@
                     <mat-icon>help_outline</mat-icon>
                     </button>
                   </h4>
-                  <app-table [data]="this.meta['moranI']" [actionColumns]="['gene_expression']" [features]="allMapCells(false)"
+                  <app-table [data]="this.meta['moranI']" [hideEmptyRows]="true" [actionColumns]="['gene_expression']" [features]="allMapCells(false)"
                     [updateColumn]="'gene_expression'" [emptyMessage]="'No Moran\'s I scores loaded'"
                     [datasetId]="selectedDataset?.id" [indexColumnLabel]="'Gene'"
                     [filters]="geneExpressionSharedFilters" [sortState]="geneExpressionSharedSortState"
@@ -165,7 +165,7 @@
                     <mat-icon>help_outline</mat-icon>
                     </button>
                   </h4>
-                  <app-table [data]="this.meta['gearyC']" [actionColumns]="['gene_expression']" [features]="allMapCells(false)"
+                  <app-table [data]="this.meta['gearyC']" [hideEmptyRows]="true" [actionColumns]="['gene_expression']" [features]="allMapCells(false)"
                     [updateColumn]="'gene_expression'" [emptyMessage]="'No Geary\'s C scores loaded'"
                     [datasetId]="selectedDataset?.id" [indexColumnLabel]="'Gene'"
                     [filters]="geneExpressionSharedFilters" [sortState]="geneExpressionSharedSortState"
@@ -357,7 +357,7 @@
 
             <mat-tab label="Spatial Correlation">
               <app-spatial-correlation-panel [isCompare]="false" [datasetId]="selectedDataset?.id"
-                [hexFeatures]="features" [compareModeActive]="compareMode"
+                [compareModeActive]="compareMode" [isBivariateActive]="selectedView === 'bivariate_overlay'"
                 (syncCompareRequested)="onSyncSpatialCompare($any($event), false)"
                 (applyBivariateColorRequested)="onApplyBivariateColor($any($event))"
                 (cellSelected)="onSpatialCellSelected($event, false)"></app-spatial-correlation-panel>
@@ -460,7 +460,7 @@
 
                   <ng-template #moranI>
                     <h4>Moran's I</h4>
-                    <app-table [data]="this.metaCompare['moranI']" [actionColumns]="['gene_expression']"
+                    <app-table [data]="this.metaCompare['moranI']" [hideEmptyRows]="true" [actionColumns]="['gene_expression']"
                       [features]="allMapCells(true)" [updateColumn]="'gene_expression'" [isCompare]="true"
                       [datasetId]="selectedDatasetCompare?.id || selectedDataset?.id" [indexColumnLabel]="'Gene'"
                       [filters]="geneExpressionSharedFiltersCompare" [sortState]="geneExpressionSharedSortStateCompare"
@@ -472,7 +472,7 @@
 
                   <ng-template #gearyC>
                     <h4>Geary's C</h4>
-                    <app-table [data]="this.metaCompare['gearyC']" [actionColumns]="['gene_expression']"
+                    <app-table [data]="this.metaCompare['gearyC']" [hideEmptyRows]="true" [actionColumns]="['gene_expression']"
                       [features]="allMapCells(true)" [updateColumn]="'gene_expression'" [isCompare]="true"
                       [datasetId]="selectedDatasetCompare?.id || selectedDataset?.id" [indexColumnLabel]="'Gene'"
                       [filters]="geneExpressionSharedFiltersCompare" [sortState]="geneExpressionSharedSortStateCompare"
@@ -674,7 +674,7 @@
 
               <mat-tab label="Spatial Correlation">
                 <app-spatial-correlation-panel [isCompare]="true" [datasetId]="selectedDatasetCompare?.id || selectedDataset?.id"
-                  [hexFeatures]="compareFeatures" [compareModeActive]="compareMode"
+                  [compareModeActive]="compareMode"
                   (syncCompareRequested)="onSyncSpatialCompare($any($event), true)"
                   (cellSelected)="onSpatialCellSelected($event, true)"></app-spatial-correlation-panel>
               </mat-tab>

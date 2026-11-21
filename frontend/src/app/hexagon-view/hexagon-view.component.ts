@@ -275,6 +275,16 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     this.fillAccessor = fn;
   }
 
+  /** Per-cell colors of the 2D bivariate overlay (selectedView 'bivariate_overlay'). Kept here so
+   * every redraw of this view (zoom/shape toggle/selection/magnifier) reuses it -- the overlay used
+   * to be painted onto the existing paths once, and any redraw turned the cells grey because that
+   * pseudo-view has no property to read. null = not active. */
+  private bivariateFill: ((d: CellFeature) => string) | null = null;
+
+  public setBivariateFill(fn: ((d: CellFeature) => string) | null): void {
+    this.bivariateFill = fn;
+  }
+
   /**
    * All D3 listeners (zoom, hover, click) are registered outside Angular's zone. Inside it, every
    * wheel/mousemove on the map triggered an app-wide change-detection pass, which is what made
@@ -466,6 +476,7 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     }
 
     const getFill = (d: CellFeature): string => {
+      if (ctx.selectedView === 'bivariate_overlay' && this.bivariateFill) return this.bivariateFill(d);
       const value = ctx.leidenCentralityProps.includes(ctx.selectedView)
         ? ctx.leidenClusterAnnotations?.[String(d.properties.leiden)]?.centrality?.[ctx.selectedView]
         : d.properties?.[ctx.selectedView];

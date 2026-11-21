@@ -102,6 +102,10 @@
 <br />
 
 <!-- Pagination controls -->
+<div *ngIf="hiddenEmptyRowCount > 0" class="hidden-rows-note">
+  {{ hiddenEmptyRowCount }} entries without any values (e.g. zero expression in all cells) are not shown.
+</div>
+
 <div *ngIf="hasData()" class="pagination">
   <button class="btn btn-pill" (click)="setPage(currentPage - 1)" [disabled]="currentPage === 1">
     Prev

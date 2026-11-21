@@ -74,15 +74,23 @@
         <!-- Bivariate Spatial Map, always shown alongside the scatterplot above -->
         <div class="bivariate-map-box">
           <div class="bivariate-title">Bivariate Spatial Map</div>
-          <div class="bivariate-map-row">
-            <div #bivariateMapContainer class="bivariate-map-canvas"></div>
+          <div #bivariateMapContainer class="bivariate-map-canvas"></div>
 
-            <!-- This canvas IS the legend for the map: same bivariateColor(u, v) blend, pixel
-                 for pixel, so it can't drift out of sync with what the map actually shows. -->
-            <div class="bivariate-legend-col">
-              <span class="axis-label-y">{{ nameB }}</span>
-              <canvas #bivariateLegendCanvas class="bivariate-legend-canvas"></canvas>
-              <span class="axis-label-x">{{ nameA }}</span>
+          <!-- The canvas IS the legend: same bivariateColor(u, v) blend, pixel for pixel, so it
+               can't drift out of sync with the map. Axis names sit beside it as a key (wrapping,
+               full name on hover) instead of squeezed around the canvas, so long obs names fit. -->
+          <div class="bivariate-legend">
+            <canvas #bivariateLegendCanvas class="bivariate-legend-canvas"></canvas>
+            <div class="bivariate-legend-keys">
+              <div class="legend-key" [matTooltip]="nameA" matTooltipPosition="above">
+                <span class="key-axis"><span class="key-dot key-dot-x"></span>X&nbsp;&rarr;</span>
+                <span class="key-name">{{ nameA }}</span>
+              </div>
+              <div class="legend-key" [matTooltip]="nameB" matTooltipPosition="above">
+                <span class="key-axis"><span class="key-dot key-dot-y"></span>Y&nbsp;&uarr;</span>
+                <span class="key-name">{{ nameB }}</span>
+              </div>
+              <div class="legend-hint">white = both high &middot; green = both low</div>
             </div>
           </div>
         </div>

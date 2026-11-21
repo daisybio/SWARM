@@ -1,4 +1,4 @@
-import { compareMissingLast } from '../attribute-filters';
+import { compareMissingLast, isMissingValue } from '../attribute-filters';
 import { Component, OnInit, Input, Output, EventEmitter, OnChanges, SimpleChanges, ElementRef, Inject, Optional } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
@@ -56,6 +56,11 @@ export class FilterableTableComponent implements OnInit, OnChanges {
    * differently" (see above) — everyone else keeps the default (reset filters/sort whenever a
    * genuinely new dataset arrives). */
   @Input() resetStateOnDataChange: boolean = true;
+  /** Drop rows whose every column is missing (NaN/null/empty) -- e.g. genes with zero expression in
+   * every cell, whose Moran's I / Geary's C etc. are all NaN and carry no information. */
+  @Input() hideEmptyRows: boolean = false;
+  /** How many rows hideEmptyRows removed (shown as a note under the table). */
+  hiddenEmptyRowCount = 0;
   @Output() featuresUpdated = new EventEmitter<void>();
   @Output() geneSelected = new EventEmitter<{ gene: string; action: string }>();
   @Output() geneSelectedCompare = new EventEmitter<{ gene: string; action: string }>();
@@ -150,6 +155,13 @@ export class FilterableTableComponent implements OnInit, OnChanges {
         });
         return row;
       });
+    }
+
+    this.hiddenEmptyRowCount = 0;
+    if (this.hideEmptyRows && this.columns.length > 0) {
+      const kept = this.rows.filter((row) => this.columns.some((col) => !isMissingValue(row[col])));
+      this.hiddenEmptyRowCount = this.rows.length - kept.length;
+      this.rows = kept;
     }
 
     // Filter action columns to only show those that are available in the data

@@ -5818,8 +5818,20 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
   private applySpatialCompareSync(event: { featA: any; featB: any }, isCompare: boolean): void {
 
+    // chromvar / pathway features name one table row (a motif / a pathway). Setting only the view
+    // left the map on the previously selected row (or the chromvar total) -> "wrong score". Their
+    // exact item is loaded below, after the view switch.
+    const itemLoads: { action: string; item: string; view: string; compare: boolean }[] = [];
     const setFeatureProps = (feat: any, isCompareTarget: boolean) => {
       if (!feat) return;
+      if (feat.category === 'chromvar' || feat.category === 'pathway') {
+        const item = String(feat.id ?? '').split('::').slice(1).join('::');
+        if (item) {
+          itemLoads.push(feat.category === 'chromvar'
+            ? { action: 'chromvar_spot_scores', item, view: 'chromvar_total_sum', compare: isCompareTarget }
+            : { action: 'pathway_activity_score_mlm', item, view: 'pathway_activity', compare: isCompareTarget });
+        }
+      }
       const cat = feat.category;
       const sym = feat.symbol || (feat.id ? feat.id.split('::')[1] : null);
 
@@ -5885,21 +5897,24 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     setTimeout(() => {
       this.onColorbyPropertyChange(false, /* skipTabJump */ false, /* preserveFeaturePin */ true);
       this.onColorbyPropertyChange(true, /* skipTabJump */ false, /* preserveFeaturePin */ true);
+      for (const l of itemLoads) {
+        (l.compare ? this.selectedItemByViewCompare : this.selectedItemByView)[l.view] = l.item;
+        // setPin=false: the drawer pin set above (exact feature id) must stay.
+        this.fetchAndUpdate(l.action, l.item, l.compare, l.view, false);
+      }
     }, 50);
   }
 
   /** Single (non-compare) mode only: recolors the real hexagon map itself with the 2D bivariate
-   * blend, like this always did before the drawer/mini-map existed. Compare mode instead shows an
-   * independent mini bivariate map inside the Live Correlation drawer (see
-   * live-correlation-drawer.component.ts's renderBivariateMap) without touching either real map --
-   * there are already two maps each showing one property side by side there, so recoloring either
-   * of them bivariately would just throw away that comparison. spatial-correlation-panel only emits
-   * this event at all when !compareModeActive (see its own template), so this shouldn't normally
-   * be reachable while compareMode is on, but the guard below is kept as a safety net regardless. */
+   * blend. The Live Correlation drawer has its own bivariate mini-map. In compare mode the two real
+   * maps already show one property each, so recoloring either would throw that comparison away;
+   * spatial-correlation-panel only emits this event when !compareModeActive, the guard below is a
+   * safety net. */
   public onApplyBivariateColor(event: { featA: any; featB: any; enabled?: boolean }): void {
     if (this.compareMode) return;
 
     if (event.enabled === false) {
+      this.mainView?.setBivariateFill(null);
       this.selectedView = this.preBivariateSelectedView ?? 'cell_type';
       this.preBivariateSelectedView = null;
       this.onColorbyPropertyChange(false, true);
@@ -5951,21 +5966,27 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
           }
         };
 
+        // Same blend as the legend canvas and the drawer's mini-map: green = both low, white = both high.
+        const fillOf = (d: any): string => {
+          const cellId = String(d?.properties?.barcode || d?.properties?.['cell_id'] || d?.properties?.['id'] || d?.id || '');
+          const pt = pointsMap.get(cellId);
+          if (!pt) return '#ccc';
+          const u = maxX > minX ? (pt.x - minX) / (maxX - minX) : 0.5;
+          const v = maxY > minY ? (pt.y - minY) / (maxY - minY) : 0.5;
+          const r = Math.round(255 * v);
+          const g = Math.round(255 * Math.max(0, 1 - Math.abs(u - v)));
+          const b = Math.round(255 * u);
+          return `rgb(${r},${g},${b})`;
+        };
+        // Registered with the view so later redraws (and the Xenium magnifier) keep the overlay.
+        this.mainView?.setBivariateFill(fillOf);
+        this.mainView?.setFillAccessor(fillOf);
+
         const sel = this.mainView?.g ? this.mainView.g.selectAll('path') : d3.select('#hexbin').selectAll('path');
         sel.interrupt()
           .style('stroke', 'transparent')
           .style('stroke-width', '1px')
-          .attr('fill', (d: any) => {
-            const cellId = String(d?.properties?.barcode || d?.properties?.['cell_id'] || d?.properties?.['id'] || d?.id || '');
-            const pt = pointsMap.get(cellId);
-            if (!pt) return '#ccc';
-            const u = maxX > minX ? (pt.x - minX) / (maxX - minX) : 0.5;
-            const v = maxY > minY ? (pt.y - minY) / (maxY - minY) : 0.5;
-            const r = Math.round(255 * v);
-            const g = Math.round(255 * Math.max(0, 1 - Math.abs(u - v)));
-            const b = Math.round(255 * u);
-            return `rgb(${r},${g},${b})`;
-          })
+          .attr('fill', fillOf)
           .style('opacity', 0.85);
       },
       error: (err) => console.error('Failed to fetch bivariate colors:', err)

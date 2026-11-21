@@ -197,7 +197,11 @@
             // without an explicit height here the container had no way to know how tall to be and
             // collapsed to near-nothing, even though width came from flex-basis/min-width fine.
             flex: 1 1 100%;
-            min-width: 320px;
+            // min-width 0 (was 320px): in a narrow sidebar a fixed minimum made the plot wider than
+            // its box and spill out of it. The plot sizes itself to the container instead.
+            min-width: 0;
+            max-width: 100%;
+            overflow: hidden;
             height: 340px;
             border: 1px solid var(--swarm-border);
             border-radius: 8px;
@@ -207,7 +211,10 @@
           }
 
           .stats-card {
-            flex: 0 0 250px;
+            flex: 1 1 220px;
+            min-width: 0;
+            max-width: 100%;
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
             gap: 10px;
