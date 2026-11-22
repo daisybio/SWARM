@@ -13,6 +13,8 @@ export interface Dataset {
   user?: string;
   created_at?: string;
   dataset_type?: string; // e.g., "Visium", "Xenium", "Multiome"
+  /** Backend-supplied extras; `organism` is "human" | "mouse" when the dataset specifies it. */
+  metadata?: { organism?: string | null; [key: string]: unknown };
 
   // Core spatial/network paths
   tangram_adata_path?: string;
@@ -161,7 +163,9 @@ export class DatasetService {
     // network loads above are what the regulatory views actually need. Nothing about labelling
     // genes is worth risking those requests never being issued.
     try {
-      this.injector.get(GeneSymbolService).load(dataset.id);
+      const geneSymbols = this.injector.get(GeneSymbolService);
+      geneSymbols.setOrganism(dataset.metadata?.organism);
+      geneSymbols.load(dataset.id);
     } catch (err) {
       console.warn('[GeneSymbols] could not prime the symbol map; ids will display raw', err);
     }

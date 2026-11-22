@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as Plotly from 'plotly.js-dist-min';
 import { FilterableTableComponent } from '../filterable-table/filterable-table.component';
@@ -95,6 +95,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { InfoService } from '../info.service';
 import { GeneSymbolService } from '../gene-symbol.service';
+import { groupingLabel } from '../grouping-labels';
 
 @Component({
   selector: 'app-dgea-panel',
@@ -114,7 +115,7 @@ import { GeneSymbolService } from '../gene-symbol.service';
   templateUrl: './dgea-panel.component.html',
   styleUrls: ['./dgea-panel.component.scss'],
 })
-export class DgeaPanelComponent {
+export class DgeaPanelComponent implements OnChanges {
   constructor(public infoService: InfoService, private geneSymbols: GeneSymbolService) {}
 
   @Input() isCompare = false;
@@ -159,10 +160,30 @@ export class DgeaPanelComponent {
    */
   @Output() geneSelected = new EventEmitter<{ gene: string; action: string }>();
 
+  /**
+   * Safety net for the "Group by" selector: when the grouping (and so the list of levels) changes, a
+   * Group 1 / Group 2 that does not exist in the new grouping is replaced by the first valid level(s), so
+   * the table, subtitle and heatmap always show a comparison of the active grouping. Emitted in a microtask
+   * (not during change detection); the parent absorbs it through its usual group1Change/group2Change handlers.
+   */
+  ngOnChanges(changes: SimpleChanges): void {
+    if (!changes['levels'] && !changes['selectedObsCol']) return;
+    Promise.resolve().then(() => {
+      const levels = this.levels;
+      if (!levels.length) return;
+      const g1 = this.group1 && levels.includes(this.group1) ? this.group1 : levels[0];
+      if (g1 !== this.group1) this.group1Change.emit(g1);
+      if (this.vsAll) return;
+      const g2 = this.group2 && levels.includes(this.group2) && this.group2 !== g1
+        ? this.group2
+        : (levels.find(x => x !== g1) ?? null);
+      if (g2 !== null && g2 !== this.group2) this.group2Change.emit(g2);
+    });
+  }
+
   getObsColLabel(col: string): string {
     if (col === 'cell_type') return 'Cell type';
-    if (col === 'leiden') return 'Leiden';
-    return col;
+    return groupingLabel(col);
   }
 
   get group1Label(): string {
@@ -218,7 +239,7 @@ export class DgeaPanelComponent {
       margin: { t: 30, l: 140, r: 20, b: 100 },
       height: Math.max(420, y.length * 22),
       xaxis: {
-        title: { text: xAxisTitle },
+        title: { text: groupingLabel(xAxisTitle) },
         tickangle: -45,
         automargin: true,
         type: 'category'

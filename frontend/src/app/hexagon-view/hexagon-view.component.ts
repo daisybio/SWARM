@@ -14,6 +14,8 @@ import { DragDropModule } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../translate.pipe';
 import { Dataset } from '../datasets.service';
 import { CellFeature } from './cell-feature.types';
+import { SpotShape, makeSpotPathGenerator, measureSpotLayout, typicalSpotDiameter } from './spot-geometry';
+import { padjToNegLog10 } from '../padj-transform';
 
 export interface HexHoverInfo {
   barcode: string;
@@ -66,6 +68,8 @@ export interface HexagonRenderContext {
    * its own section. Null/absent: fit this map's own extent (the default).
    */
   sharedScaleFeatures?: CellFeature[] | null;
+  /** Circles (real spot/cell size) or hexagons (tiled with a gap); see spot-geometry.ts. */
+  spotShape: SpotShape;
 }
 
 /**
@@ -94,6 +98,8 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
   /** This instance's own currently-selected cell, for the mouseLeave highlight-suppression check. */
   @Input() selectedCell: CellFeature | null = null;
   @Input() selectedView = '';
+  /** Map is coloured by -log10(padj): the hover tooltip shows that transform, not the raw padj. */
+  @Input() padjTransform = false;
   @Input() legendInfo: MapLegendInfo | null = null;
   public isLegendCollapsed = false;
   /**
@@ -204,9 +210,28 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
   public g!: d3.Selection<SVGGElement, any, any, any>;
   public baseLayer!: d3.Selection<SVGGElement, null, any, any>;
   public detailLayer!: d3.Selection<SVGGElement, null, any, any>;
-  public currentPathGenerator: d3.GeoPath<any, any> | null = null;
+  /**
+   * Magnified cells, inside detailLayer. The magnifier transform goes on this inner group, not on
+   * detailLayer: a clip-path is resolved in the user space of the element it is set on, so with
+   * the transform on detailLayer the clip rectangle was scaled/shifted along with the cells --
+   * cells spilled outside the frame and the white backdrop covered the whole map.
+   */
+  private detailContent!: d3.Selection<SVGGElement, null, any, any>;
+  public currentPathGenerator: ((d: CellFeature) => string) | null = null;
 
   private currentTransform = d3.zoomIdentity;
+
+  /**
+   * Outline widths are screen px (vector-effect: non-scaling-stroke, so zooming doesn't fatten
+   * them) scaled down for small spots: a 1.4 px black outline on a 1.6 px Xenium dot painted the
+   * whole overview black. 1 for spots >= 8 px at the fitted view; magnifier cells always use 1.
+   */
+  private strokeScale = 1;
+
+  private strokeWidth(node: Element, px: number): string {
+    const f = node.closest('g.detail-layer') ? 1 : this.strokeScale;
+    return `${Math.round(px * f * 100) / 100}px`;
+  }
 
   /**
    * Min/max zoom scale for the map.
@@ -231,7 +256,8 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
   private currentProjection: d3.GeoIdentityTransform | null = null;
   /** Planar bounds per feature array (arrays are replaced, never mutated, on a new dataset). */
   private static readonly boundsCache = new WeakMap<CellFeature[], [[number, number], [number, number]]>();
-  private readonly detailSize = 80;
+  /** Magnifier window size in map (viewBox) units; 80 was ~37 px on screen, too small to use. */
+  private readonly detailSize = 200;
   private detailVisible = false;
   private detailScreenPos: { x: number; y: number } | null = null;
   private keydownHandler: ((event: KeyboardEvent) => void) | null = null;
@@ -247,6 +273,16 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
 
   public setFillAccessor(fn: (d: CellFeature) => string): void {
     this.fillAccessor = fn;
+  }
+
+  /** Per-cell colors of the 2D bivariate overlay (selectedView 'bivariate_overlay'). Kept here so
+   * every redraw of this view (zoom/shape toggle/selection/magnifier) reuses it -- the overlay used
+   * to be painted onto the existing paths once, and any redraw turned the cells grey because that
+   * pseudo-view has no property to read. null = not active. */
+  private bivariateFill: ((d: CellFeature) => string) | null = null;
+
+  public setBivariateFill(fn: ((d: CellFeature) => string) | null): void {
+    this.bivariateFill = fn;
   }
 
   /**
@@ -366,6 +402,10 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
         .join('g')
         .attr('class', 'detail-layer')
         .attr('clip-path', `url(#${this.detailClipId})`);
+      this.detailContent = this.detailLayer.selectAll<SVGGElement, unknown>('g.detail-content')
+        .data([null])
+        .join('g')
+        .attr('class', 'detail-content');
 
       const zoomBehavior = d3
         .zoom<SVGSVGElement, unknown>()
@@ -413,19 +453,15 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
       );
 
     this.currentProjection = projection;
-    this.currentPathGenerator = d3.geoPath<CellFeature>().projection(projection);
+    // Spot geometry is rebuilt from centers + the measured spacing of the FULL dataset (the
+    // Xenium base layer is downsampled, its spacing would be meaningless).
+    const layout = measureSpotLayout(ownFeatures);
+    this.currentPathGenerator = makeSpotPathGenerator(
+      ctx.spotShape, layout, (p) => projection(p) as [number, number] | null, projection.scale(),
+    );
     const pathGenerator = this.currentPathGenerator;
-
-    if (ctx.features.length) {
-      const sample = ctx.features[0];
-      const bounds = pathGenerator.bounds(sample as any);
-      console.log(
-        '[DEBUG renderHexagons] n=', ctx.features.length,
-        'isXenium=', ctx.isXenium,
-        'sample screen-space bbox=', bounds,
-        'sample screen-space width/height=', bounds[1][0] - bounds[0][0], bounds[1][1] - bounds[0][1],
-      );
-    }
+    const spotPx = typicalSpotDiameter(ctx.spotShape, layout) * projection.scale();
+    this.strokeScale = Math.min(1, Math.max(0.3, spotPx / 8));
 
     if (ctx.isXenium) {
       // Centroids in data coordinates (projection-independent, so computed once per cell even
@@ -440,6 +476,7 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     }
 
     const getFill = (d: CellFeature): string => {
+      if (ctx.selectedView === 'bivariate_overlay' && this.bivariateFill) return this.bivariateFill(d);
       const value = ctx.leidenCentralityProps.includes(ctx.selectedView)
         ? ctx.leidenClusterAnnotations?.[String(d.properties.leiden)]?.centrality?.[ctx.selectedView]
         : d.properties?.[ctx.selectedView];
@@ -464,9 +501,12 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
       this.detailScreenPos = null;
     }
     if (ctx.isXenium) {
+      // The overview (downsampled) cells are clickable too: before, the base layer had
+      // pointer-events: none, so a Xenium cell could only be selected inside the magnifier.
+      this.g.style('cursor', null).style('pointer-events', null);
       this.baseLayer
-        .style('cursor', 'default')
-        .style('pointer-events', 'none')
+        .style('cursor', 'pointer')
+        .style('pointer-events', null)
         .selectAll<SVGPathElement, CellFeature>('path')
         .data(ctx.features, (d: any) => d.properties.barcode)
         .join('path')
@@ -474,7 +514,12 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
         .attr('fill', getFill)
         // Styles are rewritten here, so drop updateSelectionHighlight()'s per-path state cache.
         .property('__hlState', null)
-        .style('opacity', 0.8);
+        .attr('vector-effect', 'non-scaling-stroke')
+        .style('opacity', 0.8)
+        .on('mouseover', (event, d) => this.mouseOver(event, d))
+        .on('mousemove', (event) => this.mouseMove(event))
+        .on('mouseleave', (event, d) => this.mouseLeave(event, d))
+        .on('click', (event, d) => this.zone.run(() => this.cellClicked.emit({ event, cell: d })));
     } else {
       this.g
         .style('cursor', 'pointer')
@@ -486,6 +531,7 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
         .attr('fill', getFill)
         // Styles are rewritten here, so drop updateSelectionHighlight()'s per-path state cache.
         .property('__hlState', null)
+        .attr('vector-effect', 'non-scaling-stroke')
         .style('opacity', 0.8)
         .on('mouseover', (event, d) => this.mouseOver(event, d))
         .on('mousemove', (event) => this.mouseMove(event))
@@ -575,7 +621,13 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     const activeCluster = this.isActiveViewCategorical ? this.activeClusterValue : null;
 
     const selectedBarcode = this.selectedCell?.properties?.barcode;
-    this.g.selectAll<SVGPathElement, CellFeature>('path')
+    const paths = this.detailLayer
+      ? d3.selectAll<SVGPathElement, CellFeature>([
+        ...this.g.selectAll<SVGPathElement, CellFeature>('path').nodes(),
+        ...this.detailLayer.selectAll<SVGPathElement, CellFeature>('path').nodes(),
+      ])
+      : this.g.selectAll<SVGPathElement, CellFeature>('path');
+    paths
       .each((d: CellFeature, i, nodes) => {
         if (!d || !d.properties) return;
         const isSelectedCell = selectedBarcode !== undefined && d.properties.barcode === selectedBarcode;
@@ -592,12 +644,12 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
         if (state === 2) {
           el.interrupt()
             .attr('stroke', '#000')
-            .attr('stroke-width', '3px')
+            .attr('stroke-width', this.strokeWidth(node, 3))
             .style('opacity', 0.85);
         } else if (state === 1) {
           el.interrupt()
             .attr('stroke', '#000')
-            .attr('stroke-width', '1.4px')
+            .attr('stroke-width', this.strokeWidth(node, 1.4))
             .style('opacity', 0.8);
         } else {
           el.interrupt()
@@ -659,15 +711,16 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     const isSelectedCell = !!this.selectedCell && d.properties?.barcode === this.selectedCell.properties?.barcode;
     const isClusterMember = activeCluster !== null && this.isSameCluster(d.properties?.[currentView], activeCluster);
 
-    const strokeWidth = isSelectedCell ? '3px' : (isClusterMember ? '2px' : '1.2px');
+    const strokeWidth = this.strokeWidth(targetEl, isSelectedCell ? 3 : (isClusterMember ? 2 : 1.2));
 
     el.style('opacity', 0.95)
       .attr('stroke', '#000')
       .attr('stroke-width', strokeWidth);
 
-    const rawValue = this.lastRenderCtx?.leidenCentralityProps.includes(this.selectedView)
+    let rawValue = this.lastRenderCtx?.leidenCentralityProps.includes(this.selectedView)
       ? this.lastRenderCtx.leidenClusterAnnotations?.[String(d.properties?.leiden)]?.centrality?.[this.selectedView]
       : d.properties?.[this.selectedView];
+    if (this.padjTransform) rawValue = padjToNegLog10(rawValue);
 
     const propLabel = this.legendInfo?.title || this.selectedView || 'Value';
 
@@ -707,11 +760,11 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
 
     if (isSelectedCell) {
       el.attr('stroke', '#000')
-        .attr('stroke-width', '3px')
+        .attr('stroke-width', this.strokeWidth(targetEl, 3))
         .style('opacity', 0.85);
     } else if (isClusterMember) {
       el.attr('stroke', '#000')
-        .attr('stroke-width', '1.4px')
+        .attr('stroke-width', this.strokeWidth(targetEl, 1.4))
         .style('opacity', 0.8);
     } else {
       el.attr('stroke', 'transparent')
@@ -742,8 +795,9 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
 
     this.detailLayer.selectAll('.detail-bg').remove();
 
+    // Backdrop in screen space, below the magnified cells.
     this.detailLayer
-      .append('rect')
+      .insert('rect', ':first-child')
       .attr('class', 'detail-bg')
       .attr('x', -10000)
       .attr('y', -10000)
@@ -770,6 +824,8 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     this.svg.on('click.detail', null);
     this.svg.on('dblclick.detail', null);
     this.svg.on('contextmenu.detail', null);
+    // d3.zoom zooms in on dblclick; on a magnifier map that fought the magnifier's own dblclick.
+    this.svg.on('dblclick.zoom', null);
 
     this.zone.runOutsideAngular(() => {
       this.svg.on('dblclick.detail', (event: MouseEvent) => {
@@ -863,20 +919,27 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
     const centerX = (x0d + x1d) / 2;
     const centerY = (y0d + y1d) / 2;
 
-    const [targetX, targetY] = this.currentTransform.invert([screenX, screenY]);
+    // Magnification relative to the current map zoom. The detail layer is a child of the <svg>
+    // (not of the zoomed <g>), so it maps projected coordinates straight to screen: center the
+    // window's projected center on the click point, scaled by zoom * localScale. (Previously the
+    // translate used zoom-inverted coordinates, which only lined up at zoom 1.)
+    // 2x the current view, at least 6x the fitted view (zoom * 6 showed 3 cells at zoom 5).
+    const k = Math.max(6, 2 * this.currentTransform.k);
+    const localScale = k / this.currentTransform.k;
 
-    const localScale = 6;
-
-    this.detailLayer.attr(
+    this.detailContent.attr(
       'transform',
-      `translate(${targetX},${targetY}) scale(${localScale}) translate(${-centerX},${-centerY})`,
+      `translate(${screenX},${screenY}) scale(${k}) translate(${-centerX},${-centerY})`,
     );
 
     // The window in data coordinates (centroids are stored unprojected, see renderHexagons).
     const projection = this.currentProjection;
     if (!projection) return;
-    const p0 = projection.invert([x0d, y0d]);
-    const p1 = projection.invert([x1d, y1d]);
+    // Visible region = the window shrunk by localScale around its center (+ a cell of margin).
+    const hx = ((x1d - x0d) / 2) / localScale * 1.3;
+    const hy = ((y1d - y0d) / 2) / localScale * 1.3;
+    const p0 = projection.invert([centerX - hx, centerY - hy]);
+    const p1 = projection.invert([centerX + hx, centerY + hy]);
     if (!p0 || !p1) return;
     const minX = Math.min(p0[0], p1[0]);
     const maxX = Math.max(p0[0], p1[0]);
@@ -892,7 +955,7 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
 
     const pathGenerator = this.currentPathGenerator;
     const fillAccessor = this.fillAccessor;
-    this.zone.runOutsideAngular(() => this.detailLayer
+    this.zone.runOutsideAngular(() => this.detailContent
       .style('cursor', 'pointer')
       .selectAll<SVGPathElement, CellFeature>('path')
       .data(subset)
@@ -909,12 +972,17 @@ export class HexagonViewComponent implements OnChanges, OnDestroy {
         const num = this.toNumber(value);
         return Number.isFinite(num) ? ctx.continuousColorScale(num) : '#ccc';
       })
-      .attr('stroke', '#fff')
-      .attr('stroke-width', 0.4)
+      .attr('stroke', 'transparent')
+      .attr('stroke-width', 1)
+      // Outlines stay screen-sized instead of being magnified with the cells.
+      .attr('vector-effect', 'non-scaling-stroke')
+      .property('__hlState', null)
       .style('opacity', 1)
       .on('mouseover', (event, d) => this.mouseOver(event, d))
       .on('mousemove', (event) => this.mouseMove(event))
       .on('mouseleave', (event, d) => this.mouseLeave(event, d))
       .on('click', (event, d) => this.zone.run(() => this.cellClicked.emit({ event, cell: d }))));
+    // Selected cell / cluster outlines also inside the magnifier.
+    this.updateSelectionHighlight();
   }
 }

@@ -1,4 +1,4 @@
-import { isMissingValue } from '../attribute-filters';
+import { compareMissingLast, isMissingValue } from '../attribute-filters';
 import { Component, OnInit, Input, Output, EventEmitter, OnChanges, SimpleChanges, ElementRef, Inject, Optional } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
@@ -56,6 +56,11 @@ export class FilterableTableComponent implements OnInit, OnChanges {
    * differently" (see above) — everyone else keeps the default (reset filters/sort whenever a
    * genuinely new dataset arrives). */
   @Input() resetStateOnDataChange: boolean = true;
+  /** Drop rows whose every column is missing (NaN/null/empty) -- e.g. genes with zero expression in
+   * every cell, whose Moran's I / Geary's C etc. are all NaN and carry no information. */
+  @Input() hideEmptyRows: boolean = false;
+  /** How many rows hideEmptyRows removed (shown as a note under the table). */
+  hiddenEmptyRowCount = 0;
   @Output() featuresUpdated = new EventEmitter<void>();
   @Output() geneSelected = new EventEmitter<{ gene: string; action: string }>();
   @Output() geneSelectedCompare = new EventEmitter<{ gene: string; action: string }>();
@@ -150,6 +155,13 @@ export class FilterableTableComponent implements OnInit, OnChanges {
         });
         return row;
       });
+    }
+
+    this.hiddenEmptyRowCount = 0;
+    if (this.hideEmptyRows && this.columns.length > 0) {
+      const kept = this.rows.filter((row) => this.columns.some((col) => !isMissingValue(row[col])));
+      this.hiddenEmptyRowCount = this.rows.length - kept.length;
+      this.rows = kept;
     }
 
     // Filter action columns to only show those that are available in the data
@@ -333,23 +345,7 @@ export class FilterableTableComponent implements OnInit, OnChanges {
     if (this.sortState.column) {
       const sortKey = this.sortState.column;
       const asc = this.sortState.asc;
-      result.sort((a, b) => {
-        const valA = a[sortKey];
-        const valB = b[sortKey];
-
-        // Missing values (NaN, null, "nan", ...) never take part in the ordering: always last,
-        // whichever direction is sorted.
-        const missA = isMissingValue(valA);
-        const missB = isMissingValue(valB);
-        if (missA || missB) return missA === missB ? 0 : (missA ? 1 : -1);
-
-        if (typeof valA === 'number' && typeof valB === 'number') {
-          return asc ? valA - valB : valB - valA;
-        }
-        return asc
-          ? String(valA).localeCompare(String(valB))
-          : String(valB).localeCompare(String(valA));
-      });
+      result.sort((a, b) => compareMissingLast(a[sortKey], b[sortKey], asc));
     }
 
     return result;

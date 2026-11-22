@@ -153,3 +153,17 @@ export function isMissingValue(v: unknown): boolean {
   }
   return false;
 }
+
+/**
+ * Comparator for table sorting: missing values (see isMissingValue) are always last, in both
+ * directions (so "nan"/empty never lands at the top of a descending sort); numbers compare
+ * numerically, everything else as text (numeric-aware). Shared by every sortable table.
+ */
+export function compareMissingLast(a: unknown, b: unknown, asc: boolean): number {
+  const missA = isMissingValue(a);
+  const missB = isMissingValue(b);
+  if (missA || missB) return missA === missB ? 0 : (missA ? 1 : -1);
+  const dir = asc ? 1 : -1;
+  if (typeof a === 'number' && typeof b === 'number') return (a - b) * dir;
+  return String(a).localeCompare(String(b), undefined, { numeric: true }) * dir;
+}

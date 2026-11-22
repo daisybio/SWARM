@@ -36,13 +36,13 @@
     margin: 0;
     font-size: 1.35rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--swarm-text);
     line-height: 1.2;
   }
 
   .subtitle {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--swarm-muted);
     font-weight: 500;
   }
 }
@@ -66,7 +66,7 @@
     padding: 4px 10px;
     font-size: 0.8rem;
     font-weight: 600;
-    color: #64748b;
+    color: var(--swarm-muted);
     border-radius: 16px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -78,13 +78,13 @@
     }
 
     &:hover:not(.active) {
-      color: #1e293b;
+      color: var(--swarm-text);
     }
   }
 }
 
 .close-btn {
-  color: #64748b;
+  color: var(--swarm-muted);
   &:hover {
     color: #e65100;
     background: rgba(230, 81, 0, 0.1);
@@ -100,7 +100,7 @@
 }
 
 .intro-box {
-  background: #f8fafc;
+  background: var(--swarm-bg-soft);
   border-left: 4px solid #e65100;
   padding: 1rem 1.25rem;
   border-radius: 0 8px 8px 0;
@@ -123,7 +123,7 @@
     color: #0f172a;
     margin: 0 0 0.6rem 0;
     padding-bottom: 0.35rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--swarm-border);
   }
 
   p {
@@ -141,8 +141,8 @@
 }
 
 .contact-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--swarm-bg-soft);
+  border: 1px solid var(--swarm-border);
   border-radius: 8px;
   padding: 0.85rem 1.1rem;
   margin: 0.75rem 0;
@@ -161,7 +161,7 @@
 
 .optout-card {
   background: #fffbeb;
-  border: 1px solid #fde68a;
+  border: 1px solid var(--swarm-accent-border);
   border-radius: 10px;
   padding: 1rem 1.25rem;
   margin: 1.25rem 0;
@@ -207,21 +207,21 @@
   th, td {
     padding: 0.65rem 0.85rem;
     text-align: left;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--swarm-border);
   }
 
   th {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: var(--swarm-bg-hover);
+    color: var(--swarm-text);
     font-weight: 600;
   }
 
   tbody tr:nth-child(even) {
-    background: #f8fafc;
+    background: var(--swarm-bg-soft);
   }
 
   code {
-    background: #e2e8f0;
+    background: var(--swarm-border);
     padding: 2px 5px;
     border-radius: 4px;
     font-size: 0.825rem;
@@ -231,11 +231,11 @@
 }
 
 .policy-footer-note {
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--swarm-border);
   padding-top: 1rem;
   margin-top: 2rem;
   text-align: center;
-  color: #64748b;
+  color: var(--swarm-muted);
 }
 
 .dialog-footer {
@@ -243,12 +243,12 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.5rem;
-  background: #f8fafc;
-  border-top: 1px solid #e2e8f0;
+  background: var(--swarm-bg-soft);
+  border-top: 1px solid var(--swarm-border);
 
   .footer-links {
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--swarm-muted);
 
     a {
       color: #475569;

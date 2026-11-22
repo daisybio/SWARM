@@ -7,6 +7,16 @@ from typing import Optional, Dict, List, Union, Any
 from dataset_structure import Dataset, DatasetFactory, VisiumDataset, XeniumDataset, MultiomeDataset, Params
 
 
+def normalize_organism(value: Any) -> Optional[str]:
+    """'human' / 'mouse' for the common spellings (case-insensitive), else None (unspecified)."""
+    v = str(value or "").strip().lower().replace("_", " ")
+    if v in ("human", "homo sapiens", "hs", "hsapiens", "ncbitaxon:9606", "9606"):
+        return "human"
+    if v in ("mouse", "mus musculus", "mm", "mmusculus", "ncbitaxon:10090", "10090"):
+        return "mouse"
+    return None
+
+
 class DatasetRegistry:
     """
     Manages available datasets across the application.
@@ -536,6 +546,7 @@ class DatasetRegistry:
         dataset_id: str,
         alias: Optional[str] = None,
         description: Optional[str] = None,
+        organism: Optional[str] = None,
     ) -> Dataset:
         """Register a built-in dataset (a folder in data/) from its config file."""
         config_file = Path(config_file)
@@ -545,7 +556,7 @@ class DatasetRegistry:
         with open(config_file, 'r') as f:
             config = json.load(f)
 
-        return self.register_builtin(config, config_file.parent, dataset_id, alias=alias, description=description)
+        return self.register_builtin(config, config_file.parent, dataset_id, alias=alias, description=description, organism=organism)
 
     def register_builtin(
         self,
@@ -554,9 +565,10 @@ class DatasetRegistry:
         dataset_id: str,
         alias: Optional[str] = None,
         description: Optional[str] = None,
+        organism: Optional[str] = None,
     ) -> Dataset:
         """Register a built-in dataset from a config dict (paths absolute or relative to base_dir)."""
-        dataset = self.dataset_from_config(config, base_dir, dataset_id, user="builtin", alias=alias, description=description)
+        dataset = self.dataset_from_config(config, base_dir, dataset_id, user="builtin", alias=alias, description=description, organism=organism)
         self.register_builtin_dataset(dataset=dataset)
         print(f"✓ Registered builtin dataset from config: {dataset_id} ({dataset.alias})")
         return dataset
@@ -569,6 +581,7 @@ class DatasetRegistry:
         user: str,
         alias: Optional[str] = None,
         description: Optional[str] = None,
+        organism: Optional[str] = None,
     ) -> Dataset:
         """
         Build the Dataset object for a dataset folder from its config. The one loader for both kinds:
@@ -628,6 +641,9 @@ class DatasetRegistry:
         )
         if description is not None:
             common["description"] = description
+        # 'human' / 'mouse' (or None when unspecified): decides how gene names are cased in the UI.
+        # Explicit argument first, then the config's "organism" key.
+        common["organism"] = normalize_organism(organism or config.get("organism"))
 
         # Route based on dataset type
         dataset_type_lower = dataset_type.lower()

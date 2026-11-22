@@ -17,7 +17,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import * as Plotly from 'plotly.js-dist-min';
 import * as d3 from 'd3';
-import { extendedPalette } from '../categorical-palette';
+import { extendedPalette, LEIDEN_CLUSTER_PALETTE } from '../categorical-palette';
 import { describeApiError, isExplanatoryApiError } from '../api-error';
 import { CellFeature } from '../hexagon-view/cell-feature.types';
 
@@ -193,8 +193,10 @@ export class LiveCorrelationDrawerComponent implements OnChanges, OnDestroy {
     // color for cell_type labels like "B cell", since those aren't valid CSS color names either.
     // Map each distinct cluster to its own color from a qualitative palette instead.
     const distinctClusters = Array.from(new Set<string>(clusters));
-    // extendedPalette: Set2 first, then generated colors, so clusters beyond the 8th don't reuse one.
-    const clusterColorScale = d3.scaleOrdinal<string>(extendedPalette(d3.schemeSet2, distinctClusters.length))
+    // Same palette as the map's Leiden view; sorted (numeric-aware) so cluster N gets the same color
+    // as on the map regardless of the order the points arrive in.
+    distinctClusters.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const clusterColorScale = d3.scaleOrdinal<string>(extendedPalette(LEIDEN_CLUSTER_PALETTE, distinctClusters.length))
       .domain(distinctClusters);
     const pointColors = clusters.map((c: string) => clusterColorScale(c));
 
@@ -304,12 +306,18 @@ export class LiveCorrelationDrawerComponent implements OnChanges, OnDestroy {
     }
     const allX: number[] = coords.x;
     const allY: number[] = coords.y;
-    const minX = Math.min(...allX), maxX = Math.max(...allX);
-    const minY = Math.min(...allY), maxY = Math.max(...allY);
+    // d3.extent, not Math.min(...all): spreading every cell as call arguments throws on big datasets.
+    const [minX, maxX] = d3.extent(allX) as [number, number];
+    const [minY, maxY] = d3.extent(allY) as [number, number];
 
     const width = container.clientWidth || 300;
-    const height = width; // square, matching the real map's own aspect ratio convention
-    const padding = 10;
+    const padding = 8;
+    // Height follows the tissue's own aspect ratio (clamped) instead of a fixed square, so a wide
+    // or narrow section fills the box rather than sitting small in a lot of white.
+    const collection = { type: 'FeatureCollection', features: this.features } as any;
+    const [[bx0, by0], [bx1, by1]] = d3.geoPath(d3.geoIdentity()).bounds(collection);
+    const aspect = bx1 > bx0 ? (by1 - by0) / (bx1 - bx0) : 1;
+    const height = Math.round(width * Math.min(1, Math.max(0.55, aspect)));
 
     d3.select(container).selectAll('svg').remove();
     const svg = d3.select(container)
@@ -320,7 +328,7 @@ export class LiveCorrelationDrawerComponent implements OnChanges, OnDestroy {
 
     const projection = d3.geoIdentity().fitExtent(
       [[padding, padding], [width - padding, height - padding]],
-      { type: 'FeatureCollection', features: this.features } as any,
+      collection,
     );
     const pathGenerator = d3.geoPath<CellFeature>().projection(projection);
 

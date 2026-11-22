@@ -23,7 +23,8 @@
           <span class="hx-title-with-info">
             Global Regulatory Scores
           </span>
-          <button mat-icon-button class="info-btn" *ngIf="!isCompare"
+          <button mat-icon-button type="button" class="hx-info-btn" id="global-regulatory-scores-info" *ngIf="!isCompare"
+            matTooltip="Guided tour: global regulatory scores" matTooltipPosition="above"
             (click)="globalScoresTutorialRequested.emit(); $event.stopPropagation()">
             <mat-icon>help_outline</mat-icon>
           </button>
@@ -78,7 +79,8 @@
       <mat-expansion-panel-header>
         <span class="hx-title-with-info">
           Regulatory Network Graphs
-          <button mat-icon-button class="info-btn" *ngIf="!isCompare"
+          <button mat-icon-button type="button" class="hx-info-btn" id="network-regulatory-scores-info" *ngIf="!isCompare"
+            matTooltip="Guided tour: regulatory network graphs" matTooltipPosition="above"
             (click)="networkScoresTutorialRequested.emit(); $event.stopPropagation()">
             <mat-icon>help_outline</mat-icon>
           </button>
@@ -259,7 +261,8 @@
       <mat-expansion-panel-header>
         <span class="hx-title-with-info">
           Cell Regulatory Scores
-          <button mat-icon-button class="info-btn" *ngIf="!isCompare"
+          <button mat-icon-button type="button" class="hx-info-btn" id="cell-regulatory-scores-info" *ngIf="!isCompare"
+            matTooltip="Guided tour: cell regulatory scores" matTooltipPosition="above"
             (click)="cellScoresTutorialRequested.emit(); $event.stopPropagation()">
             <mat-icon>help_outline</mat-icon>
           </button>

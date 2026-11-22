@@ -145,8 +145,8 @@ h2 {
   -webkit-appearance: none;
   -moz-appearance: none;
   background-image:
-    linear-gradient(45deg, transparent 50%, #ff9800 50%),
-    linear-gradient(135deg, #ff9800 50%, transparent 50%),
+    linear-gradient(45deg, transparent 50%, var(--swarm-primary) 50%),
+    linear-gradient(135deg, var(--swarm-primary) 50%, transparent 50%),
     linear-gradient(to right, transparent, transparent);
   background-position:
     calc(100% - 18px) calc(50% - 3px),
@@ -173,7 +173,7 @@ h2 {
   border-radius: 999px;
   font-weight: 600;
   white-space: nowrap;
-  background: #ff9800;
+  background: var(--swarm-primary);
   color: black;
   border: none;
   box-shadow: 0 2px 8px rgba(255, 152, 0, 0.2);
@@ -225,7 +225,7 @@ h2 {
 .progress .bar {
   height: 100%;
   width: 0%;
-  background: #ff9800;
+  background: var(--swarm-primary);
   transition: width .3s ease;
 }
 .actions { display: flex; gap: 12px; margin-top: 20px; }
@@ -233,7 +233,7 @@ button[type="submit"], button[type="reset"] {
   padding: 10px 16px;
   border-radius: 12px;
   border: none;
-  background: #ff9800;
+  background: var(--swarm-primary);
   color: black;
   font-weight: 700;
   cursor: pointer;

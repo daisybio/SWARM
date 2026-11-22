@@ -300,6 +300,9 @@ const SCORE_INFO: Record<string, string> = {
   pathway_activity_mlm:
     'decoupleR Multivariate Linear Model (MLM) score estimating signaling pathway activation from PROGENy responsive footprint genes.',
 
+  dgea:
+    'Differential gene expression analysis (DGEA): compares gene expression between two groups of cells defined by the chosen grouping (Group 1 vs Group 2, or Group 1 vs all other cells) to find genes that differ most between them.',
+
   // Leiden Clustering & Spatial Graph Metrics (Squidpy)
   degree_centrality:
     'Computed with Squidpy (sq.gr.centrality_scores): Fraction of all spatial neighborhood connections linked to spots in this cluster. Measures overall boundary surface and spatial graph connectivity.',

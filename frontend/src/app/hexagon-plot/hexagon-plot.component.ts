@@ -36,8 +36,10 @@ import { FurtherAttributesPanelComponent } from '../further-attributes-panel/fur
 import { SpatialCorrelationPanelComponent } from '../spatial-correlation-panel/spatial-correlation-panel.component';
 import { LiveCorrelationDrawerComponent } from '../live-correlation-drawer/live-correlation-drawer.component';
 import { CellFeature } from '../hexagon-view/cell-feature.types';
+import { SpotShape } from '../hexagon-view/spot-geometry';
 import { isSpatialOrIdentifierKey, isUninformativeAttribute } from '../attribute-filters';
-import { categoricalScale, ensurePaletteCovers } from '../categorical-palette';
+import { categoricalScale, ensurePaletteCovers, LEIDEN_CLUSTER_PALETTE } from '../categorical-palette';
+import { PADJ_LEGEND_LABEL, PADJ_NEGLOG_CLIP, isPadjColumn, padjToNegLog10 } from '../padj-transform';
 
 // Material
 import { MatButtonModule } from '@angular/material/button';
@@ -60,34 +62,7 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { MatInputModule } from '@angular/material/input';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 
-export const LEIDEN_CLUSTER_PALETTE: string[] = [
-  '#ff9800', // 0: Orange
-  '#4caf50', // 1: Green
-  '#1976d2', // 2: Blue
-  '#9c27b0', // 3: Purple
-  '#00bcd4', // 4: Cyan
-  '#ff5722', // 5: Deep Coral / Red-Orange
-  '#8bc34a', // 6: Light Lime Green
-  '#e91e63', // 7: Magenta / Pink
-  '#009688', // 8: Teal
-  '#ffa726', // 9: Gold / Amber
-  '#673ab7', // 10: Deep Purple
-  '#039be5', // 11: Sky Blue
-  '#cddc39', // 12: Lime
-  '#d81b60', // 13: Ruby / Dark Pink
-  '#26a69a', // 14: Mint
-  '#f57c00', // 15: Tangerine
-  '#3f51b5', // 16: Indigo
-  '#795548', // 17: Warm Brown
-  '#00acc1', // 18: Dark Turquoise
-  '#607d8b', // 19: Slate Grey
-  '#8e24aa', // 20: Dark Orchid
-  '#43a047', // 21: Forest Green
-  '#ffb300', // 22: Yellow Amber
-  '#5e35b1', // 23: Dark Violet
-  '#8d6e63', // 24: Sienna
-  '#78909c', // 25: Steel Grey
-];
+export { LEIDEN_CLUSTER_PALETTE };
 
 /** The two-level tab grouping: each entry is one outer category tab, `tabs` lists the actual
  * (inner) tab labels it contains, in display order. Order here must match the template's outer
@@ -259,6 +234,17 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   public compareSameScale = false;
 
+  /** Spot shape on both maps (see hexagon-view/spot-geometry.ts); remembered per browser. */
+  public spotShape: SpotShape = HexagonPlotComponent.loadSpotShape();
+
+  private static loadSpotShape(): SpotShape {
+    try {
+      return localStorage.getItem('swarm.spotShape') === 'circle' ? 'circle' : 'hexagon';
+    } catch {
+      return 'hexagon';
+    }
+  }
+
 
   public selectedCell: CellFeature | null = null;
   public selectedCellCompare: CellFeature | null = null;
@@ -290,6 +276,18 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
   public selectedItemByView: { [view: string]: string | null } = {};
   public selectedItemByViewCompare: { [view: string]: string | null } = {};
+
+  /** Last obsm column loaded into each view's map property (e.g. tf_activity -> 'tf_activity_padj_ulm').
+   * Score and padj columns share one property, so this is how the map knows a view holds padj. */
+  private loadedColumnByView: { [view: string]: string } = {};
+  private loadedColumnByViewCompare: { [view: string]: string } = {};
+
+  /** True when the map is currently coloured by an adjusted p-value column (shown as -log10). */
+  public isPadjView(compare: boolean = false, view?: string): boolean {
+    const v = view ?? (compare ? this.selectedCompareView : this.selectedView);
+    const col = (compare ? this.loadedColumnByViewCompare : this.loadedColumnByView)[v];
+    return isPadjColumn(col);
+  }
 
   public regulatoryScoreDisplayMode: 'raw' | 'moranI' | 'gearyC' = 'raw';
   public regulatoryScoreDisplayModeCompare: 'raw' | 'moranI' | 'gearyC' = 'raw';
@@ -2155,6 +2153,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       leidenClusterAnnotations: (compare ? this.metaCompare : this.meta)?.['leiden_cluster_annotations'],
       leidenCentralityProps: this.leidenCentralityProps,
       sharedScaleFeatures: this.compareMode && this.compareSameScale && otherFull.length ? otherFull : null,
+      spotShape: this.spotShape,
     };
   }
 
@@ -2172,6 +2171,17 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /** "Same scale" toggle in compare mode (see compareSameScale). */
+  public toggleSpotShape(): void {
+    this.spotShape = this.spotShape === 'hexagon' ? 'circle' : 'hexagon';
+    try {
+      localStorage.setItem('swarm.spotShape', this.spotShape);
+    } catch {
+      /* storage unavailable: the choice just isn't remembered */
+    }
+    this.rerenderMapGeometry(false);
+    this.rerenderMapGeometry(true);
+  }
+
   public toggleCompareSameScale(): void {
     this.compareSameScale = !this.compareSameScale;
     this.rerenderMapGeometry(false);
@@ -2233,6 +2243,9 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   private extractViewValue(feature: CellFeature, view: string, isCompare = false): unknown {
     if (this.leidenCentralityProps.includes(view)) {
       return this.getLeidenClusterAnnotation(feature.properties.leiden, isCompare)?.centrality?.[view];
+    }
+    if (this.isPadjView(isCompare, view)) {
+      return padjToNegLog10(feature.properties[view]);
     }
     return feature.properties[view];
   }
@@ -2502,6 +2515,9 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       ? features
       : (compare ? this.compareFeatures : this.features) || [];
 
+    // -log10(padj) is always a continuous scale (even when the raw padj is all 0 / few integers).
+    if (this.isPadjView(compare, property)) return true;
+
     // Memoized: this is reached from template bindings (isActiveCategorical, categoricalProperties,
     // ...), i.e. on every change-detection pass, and scanning every cell each time cost ~150 ms per
     // pass on a 24k-cell dataset. See featureDataVersion for when the cache is invalidated.
@@ -2594,7 +2610,8 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     if (view === 'leiden') {
       return compare ? this.availableClusterIdsCompare : this.availableClusterIds;
     }
-    const features = (compare ? this.compareFeatures : this.features) || [];
+    // All cells, so rare values missing from the downsampled Xenium overview are still listed.
+    const features = this.allMapCells(compare) || [];
     // Memoized: bound to an @Input() in the template, so a fresh array on every change-detection
     // pass both rescanned every cell and re-triggered the child's ngOnChanges each time.
     const cached = this.activeClusterValuesCache[compare ? 1 : 0];
@@ -2735,7 +2752,9 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
-    valuesRaw = features.map((f) => this.extractViewValue(f, viewToUse, !isMainView));
+    // Legend domain from ALL cells: the Xenium overview draws a subset, whose min/max and
+    // category list can miss values that the magnifier then shows.
+    valuesRaw = this.allMapCells(!isMainView).map((f) => this.extractViewValue(f, viewToUse, !isMainView));
 
     // Determine if the property is continuous
     const isContinuous = this.isContinuousScale(viewToUse, features, !isMainView);
@@ -2771,6 +2790,13 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         max = 1;
       }
 
+      // -log10(padj): clip the colour scale at PADJ_NEGLOG_CLIP so a few huge values (exact
+      // zeros -> 300) do not flatten the map; the legend maximum then reads ">=" the clip.
+      if (this.isPadjView(!isMainView, viewToUse)) {
+        max = Math.min(max, PADJ_NEGLOG_CLIP);
+        min = Math.min(min, max);
+      }
+
       // Legend shows the real value range of this view.
       viewVariablesToUpdate.setLegendDomain([min, max]);
       viewVariablesToUpdate.setLegendType('continuous');
@@ -2788,7 +2814,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       const span = max - min;
       fillOf = (d) => {
         const n = this.toNumber(this.extractViewValue(d, viewToUse, !isMainView));
-        return Number.isFinite(n) ? continuous((n - min) / span) : '#ccc';
+        return Number.isFinite(n) ? continuous(Math.min(1, Math.max(0, (n - min) / span))) : '#ccc';
       };
     } else {
       // categorical scale
@@ -3652,7 +3678,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
       if (clusterValue !== null) {
         this.selectedCluster = clusterValue;
-        this.clusterCells = (this.features || []).filter(
+        this.clusterCells = this.allMapCells(false).filter(
           (c) => String(c.properties?.[this.selectedView]).trim() === String(clusterValue).trim(),
         );
         this.calculateClusterStats(false);
@@ -3694,7 +3720,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
       if (clusterValue !== null) {
         this.selectedClusterCompare = clusterValue;
-        this.compareClusterCells = (this.compareFeatures || []).filter(
+        this.compareClusterCells = this.allMapCells(true).filter(
           (c) => String(c.properties?.[this.selectedCompareView]).trim() === String(clusterValue).trim(),
         );
         this.calculateClusterStats(true);
@@ -3738,7 +3764,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   public onLegendCategoryClicked(category: string, compare: boolean = false): void {
     const view = compare ? this.selectedCompareView : this.selectedView;
-    const features = compare ? (this.compareFeatures || []) : this.features;
+    const features = this.allMapCells(compare) || [];
     const representativeCell = features.find((f) => String(f.properties?.[view]) === category);
     if (!representativeCell) return;
     this.displayCellDetails(representativeCell, compare);
@@ -3769,7 +3795,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
       if (compare) {
         this.selectedClusterCompare = clusterNum;
-        this.compareClusterCells = (this.compareFeatures || []).filter(
+        this.compareClusterCells = this.allMapCells(true).filter(
           (c) => Number(c.properties?.leiden) === clusterNum,
         );
         this.calculateClusterStats(true);
@@ -3778,7 +3804,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         setTimeout(() => this.renderFootprintPlots(this.selectedDatasetCompare, true), 100);
       } else {
         this.selectedCluster = clusterNum;
-        this.clusterCells = (this.features || []).filter(
+        this.clusterCells = this.allMapCells(false).filter(
           (c) => Number(c.properties?.leiden) === clusterNum,
         );
         this.calculateClusterStats(false);
@@ -3789,7 +3815,8 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
-    const features = (compare ? this.compareFeatures : this.features) || [];
+    // All cells (not the downsampled Xenium overview): counts and members must be complete.
+    const features = this.allMapCells(compare) || [];
     const counts = new Map<string, { value: string | number; count: number }>();
     features.forEach((f) => {
       const raw = f.properties?.[view] as string | number | undefined;
@@ -3840,7 +3867,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // 2. Set active cluster state
       this.selectedClusterCompare = clusterId;
-      this.compareClusterCells = (this.compareFeatures || []).filter(
+      this.compareClusterCells = this.allMapCells(true).filter(
         (cell) => String(cell.properties?.[view]).trim() === String(clusterId).trim(),
       );
       this.calculateClusterStats(true);
@@ -3873,7 +3900,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
       // 2. Set active cluster state
       this.selectedCluster = clusterId;
-      this.clusterCells = (this.features || []).filter(
+      this.clusterCells = this.allMapCells(false).filter(
         (cell) => String(cell.properties?.[view]).trim() === String(clusterId).trim(),
       );
       this.calculateClusterStats(false);
@@ -4386,6 +4413,9 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     const token = this.nextRequestToken(tokenType);
     const safeIndex = encodeURIComponent(index);
     const isGeneExpression = columnName === 'gene_expression';
+    if (view) {
+      (compare ? this.loadedColumnByViewCompare : this.loadedColumnByView)[view] = columnName;
+    }
 
     // Determine the property name to update based on the view
     // If view is provided, use it; otherwise default to 'regulatory_scores' for backward compatibility
@@ -4695,7 +4725,9 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     const titleText = this.translationService.translateSync(viewVariablesToUpdate.view);
-    const legendTitle = titleText && String(titleText).trim() ? titleText : this.label(viewVariablesToUpdate.view);
+    let legendTitle = titleText && String(titleText).trim() ? titleText : this.label(viewVariablesToUpdate.view);
+    const padjLegend = this.isPadjView(!viewVariablesToUpdate.isMainView, viewVariablesToUpdate.view);
+    if (padjLegend) legendTitle = `${legendTitle} ${PADJ_LEGEND_LABEL}`;
 
     let legendInfo: MapLegendInfo | null = null;
 
@@ -4715,7 +4747,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
         title: legendTitle,
         type: 'continuous',
         minText: this.formatLegendNumber(min ?? 0),
-        maxText: this.formatLegendNumber(max ?? 0),
+        maxText: (padjLegend && (max ?? 0) >= PADJ_NEGLOG_CLIP ? '\u2265 ' : '') + this.formatLegendNumber(max ?? 0),
         gradientStops,
       };
     } else {
@@ -5786,8 +5818,20 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
   private applySpatialCompareSync(event: { featA: any; featB: any }, isCompare: boolean): void {
 
+    // chromvar / pathway features name one table row (a motif / a pathway). Setting only the view
+    // left the map on the previously selected row (or the chromvar total) -> "wrong score". Their
+    // exact item is loaded below, after the view switch.
+    const itemLoads: { action: string; item: string; view: string; compare: boolean }[] = [];
     const setFeatureProps = (feat: any, isCompareTarget: boolean) => {
       if (!feat) return;
+      if (feat.category === 'chromvar' || feat.category === 'pathway') {
+        const item = String(feat.id ?? '').split('::').slice(1).join('::');
+        if (item) {
+          itemLoads.push(feat.category === 'chromvar'
+            ? { action: 'chromvar_spot_scores', item, view: 'chromvar_total_sum', compare: isCompareTarget }
+            : { action: 'pathway_activity_score_mlm', item, view: 'pathway_activity', compare: isCompareTarget });
+        }
+      }
       const cat = feat.category;
       const sym = feat.symbol || (feat.id ? feat.id.split('::')[1] : null);
 
@@ -5853,21 +5897,24 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     setTimeout(() => {
       this.onColorbyPropertyChange(false, /* skipTabJump */ false, /* preserveFeaturePin */ true);
       this.onColorbyPropertyChange(true, /* skipTabJump */ false, /* preserveFeaturePin */ true);
+      for (const l of itemLoads) {
+        (l.compare ? this.selectedItemByViewCompare : this.selectedItemByView)[l.view] = l.item;
+        // setPin=false: the drawer pin set above (exact feature id) must stay.
+        this.fetchAndUpdate(l.action, l.item, l.compare, l.view, false);
+      }
     }, 50);
   }
 
   /** Single (non-compare) mode only: recolors the real hexagon map itself with the 2D bivariate
-   * blend, like this always did before the drawer/mini-map existed. Compare mode instead shows an
-   * independent mini bivariate map inside the Live Correlation drawer (see
-   * live-correlation-drawer.component.ts's renderBivariateMap) without touching either real map --
-   * there are already two maps each showing one property side by side there, so recoloring either
-   * of them bivariately would just throw away that comparison. spatial-correlation-panel only emits
-   * this event at all when !compareModeActive (see its own template), so this shouldn't normally
-   * be reachable while compareMode is on, but the guard below is kept as a safety net regardless. */
+   * blend. The Live Correlation drawer has its own bivariate mini-map. In compare mode the two real
+   * maps already show one property each, so recoloring either would throw that comparison away;
+   * spatial-correlation-panel only emits this event when !compareModeActive, the guard below is a
+   * safety net. */
   public onApplyBivariateColor(event: { featA: any; featB: any; enabled?: boolean }): void {
     if (this.compareMode) return;
 
     if (event.enabled === false) {
+      this.mainView?.setBivariateFill(null);
       this.selectedView = this.preBivariateSelectedView ?? 'cell_type';
       this.preBivariateSelectedView = null;
       this.onColorbyPropertyChange(false, true);
@@ -5919,21 +5966,27 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
           }
         };
 
+        // Same blend as the legend canvas and the drawer's mini-map: green = both low, white = both high.
+        const fillOf = (d: any): string => {
+          const cellId = String(d?.properties?.barcode || d?.properties?.['cell_id'] || d?.properties?.['id'] || d?.id || '');
+          const pt = pointsMap.get(cellId);
+          if (!pt) return '#ccc';
+          const u = maxX > minX ? (pt.x - minX) / (maxX - minX) : 0.5;
+          const v = maxY > minY ? (pt.y - minY) / (maxY - minY) : 0.5;
+          const r = Math.round(255 * v);
+          const g = Math.round(255 * Math.max(0, 1 - Math.abs(u - v)));
+          const b = Math.round(255 * u);
+          return `rgb(${r},${g},${b})`;
+        };
+        // Registered with the view so later redraws (and the Xenium magnifier) keep the overlay.
+        this.mainView?.setBivariateFill(fillOf);
+        this.mainView?.setFillAccessor(fillOf);
+
         const sel = this.mainView?.g ? this.mainView.g.selectAll('path') : d3.select('#hexbin').selectAll('path');
         sel.interrupt()
           .style('stroke', 'transparent')
           .style('stroke-width', '1px')
-          .attr('fill', (d: any) => {
-            const cellId = String(d?.properties?.barcode || d?.properties?.['cell_id'] || d?.properties?.['id'] || d?.id || '');
-            const pt = pointsMap.get(cellId);
-            if (!pt) return '#ccc';
-            const u = maxX > minX ? (pt.x - minX) / (maxX - minX) : 0.5;
-            const v = maxY > minY ? (pt.y - minY) / (maxY - minY) : 0.5;
-            const r = Math.round(255 * v);
-            const g = Math.round(255 * Math.max(0, 1 - Math.abs(u - v)));
-            const b = Math.round(255 * u);
-            return `rgb(${r},${g},${b})`;
-          })
+          .attr('fill', fillOf)
           .style('opacity', 0.85);
       },
       error: (err) => console.error('Failed to fetch bivariate colors:', err)
@@ -5941,7 +5994,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   public onSpatialCellSelected(cellId: string, isCompare: boolean = false): void {
-    const featList = isCompare ? this.compareFeatures : this.features;
+    const featList = this.allMapCells(isCompare);
     const targetCell = (featList || []).find((f: any) => {
       const props = f?.properties;
       return (

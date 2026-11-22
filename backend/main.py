@@ -240,12 +240,14 @@ DEFAULT_DATASETS = [
         "alias": "BRCA (Visium)",
         "dir": "data/brca_visium",
         "description": "Pre-configured spatial transcriptomics dataset (BRCA Visium)",
+        "organism": "human",
     },
     {
         "id": "builtin_visual_cortex",
         "alias": "Visual Cortex (Visium)",
         "dir": "data/visual_cortex",
         "description": "Mouse Visual Cortex spatial transcriptomics dataset",
+        "organism": "mouse",
     },
     {
         "id": "builtin_heart_multiome",
@@ -254,6 +256,7 @@ DEFAULT_DATASETS = [
         "config_file": "config.json",
         "geojson_file": "hexagons_measured.geojson",
         "description": "Human Heart Cell Atlas (Multiome - Measured Expression & Scores)",
+        "organism": "human",
     },
     {
         "id": "builtin_heart_tangram",
@@ -262,6 +265,7 @@ DEFAULT_DATASETS = [
         "config_file": "config_tangram.json",
         "geojson_file": "hexagons.geojson",
         "description": "Human Heart Cell Atlas (Multiome - Tangram Projected Expression & ChromVAR)",
+        "organism": "human",
     }
 ]
 
@@ -280,6 +284,7 @@ async def lifespan(app: FastAPI):
         alias = ds_conf["alias"]
         ds_dir = base_path / ds_conf.get("dir", "data")
         description = ds_conf.get("description", "")
+        organism = ds_conf.get("organism")
 
         if not ds_dir.exists():
             print(f"✗ Default dataset dir not found: {ds_dir}")
@@ -299,6 +304,7 @@ async def lifespan(app: FastAPI):
                     dataset_id=dataset_id,
                     alias=alias,
                     description=description,
+                    organism=organism,
                 )
                 continue
             except Exception as e:
@@ -335,6 +341,7 @@ async def lifespan(app: FastAPI):
                 dataset_id=dataset_id,
                 alias=alias,
                 description=description,
+                organism=organism,
             )
             print(f"✓ Registered default dataset {dataset_id} directly from files")
         else:
@@ -387,6 +394,20 @@ cookie = SessionCookie(
     cookie_params=cookie_params,
 )
 backend = InMemoryBackend[UUID, SessionData]()
+
+
+async def _read_or_restore_session(session_id: UUID) -> "SessionData":
+    """Return the session for this cookie, recreating it if the in-memory store lost it.
+
+    Sessions live in an InMemoryBackend, so a backend restart drops them while the browser
+    keeps its cookie; backend.read() then returns None. The username is the session id, so
+    restoring under the same id keeps ownership checks (owner == username) intact.
+    """
+    session_data = await backend.read(session_id)
+    if session_data is None:
+        session_data = SessionData(username=str(session_id))
+        await backend.create(session_id, session_data)
+    return session_data
 
 verifier = BasicVerifier(
     identifier="general_verifier",
@@ -1174,7 +1195,7 @@ async def cleanup_expired_sessions():
 @app.post("/reset_session")
 async def reset_session(session_id: UUID = Depends(cookie)):
     """Call this on page reload to clear old data"""
-    session_data = await backend.read(session_id)
+    session_data = await _read_or_restore_session(session_id)
     # Reset all data except username
     session_data.adata_path = None
     session_data.genie_network_path = None
@@ -2600,7 +2621,7 @@ async def read_adata(
     -d '{"path": "data/adata.h5ad"}'
     ```
     """
-    session_data = await backend.read(session_id)
+    session_data = await _read_or_restore_session(session_id)
 
     session_data.adata_path = adata_path.path
 
@@ -2648,7 +2669,7 @@ async def read_network_genie(
     ```
     """
 
-    session_data = await backend.read(session_id)
+    session_data = await _read_or_restore_session(session_id)
 
     if genie_network_path.path and not os.path.exists(genie_network_path.path):
         raise HTTPException(status_code=400, detail="TF-GRN network file not found")
@@ -2673,7 +2694,7 @@ async def read_network_sponge(sponge_network_path: SpongeNetworksPath, session_i
     -d '{"path": "data/sponge_network.json"}'
     ```
      """
-    session_data = await backend.read(session_id)
+    session_data = await _read_or_restore_session(session_id)
 
     if sponge_network_path.path and not os.path.exists(sponge_network_path.path):
         raise HTTPException(status_code=400, detail="Sponge network file not found")
