@@ -14,10 +14,16 @@ export const PADJ_NEGLOG_CLIP = 50;
 
 export const PADJ_LEGEND_LABEL = '-log10(padj)';
 
-/** True for obsm column names such as 'pathway_activity_padj_mlm' ('_padj_' or a 'padj' suffix). */
+/** True for obsm column names holding (adjusted) p-values: 'pathway_activity_padj_mlm' ('_padj_' or a
+ * 'padj' suffix) and plain p-value columns such as 'ligand_receptor_p_value'. */
 export function isPadjColumn(name: string | null | undefined): boolean {
   if (!name) return false;
-  return name.includes('_padj_') || name.endsWith('padj');
+  return name.includes('_padj_') || name.endsWith('padj') || name.endsWith('_p_value');
+}
+
+/** Legend suffix for the -log10 colour scale of `name`: '-log10(p)' for raw p-values, else '-log10(padj)'. */
+export function pValueLegendLabel(name: string | null | undefined): string {
+  return name && name.endsWith('_p_value') ? '-log10(p)' : PADJ_LEGEND_LABEL;
 }
 
 /** -log10(max(padj, 1e-300)); NaN for missing / non-numeric / negative input. */

@@ -551,7 +551,7 @@
                   (spongeSliderChanged)="onSliderChangeSponge(true)"></app-regulatory-scores-panel>
               </mat-tab>
 
-              <mat-tab label="TF Activity" *ngIf="selectedCell"
+              <mat-tab label="TF Activity"
                 [disabled]="!propertyAvailable('tf_activity', true)">
                 <div *ngIf="selectedCompareView === 'tf_activity'">
                   <app-regulatory-tables-panel kind="tf_activity" [isCompare]="true" [meta]="metaCompare"

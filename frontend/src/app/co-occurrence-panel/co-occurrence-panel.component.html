@@ -14,16 +14,16 @@
           (ngModelChange)="intervalChanged.emit($event)">
           <option *ngFor="let i of intervalOptions" [ngValue]="i">Interval {{ i }}</option>
         </select>
-        <span class="interval-info">(0-{{ maxInterval }})</span>
+        <span class="interval-info">(0-{{ maxInterval - 1 }})</span>
       </div>
 
       <div class="stats-display" *ngIf="coOccurrenceData.length > 0">
         <span class="stat-item">Min: {{ getIntervalStats().min | number:'1.4-4' }}</span>
         <span class="stat-item">Max: {{ getIntervalStats().max | number:'1.4-4' }}</span>
         <span class="stat-item">Avg: {{ getIntervalStats().avg }}</span>
-        <span class="interval-info">(0-{{ maxInterval }})</span>
+        <span class="interval-info">(0-{{ maxInterval - 1 }})</span>
         <span *ngIf="intervalBoundaries.length">
-          <span class="stat-item">Interval borders:&nbsp;&nbsp;&nbsp;&nbsp;</span>
+          <span class="stat-item">Radius of Interval {{ selectedInterval }}:&nbsp;&nbsp;&nbsp;&nbsp;</span>
           <span class="interval-info">{{ formatActualIntervalRange(selectedInterval) }}</span>
         </span>
       </div>
@@ -60,8 +60,8 @@
     <button class="nav-btn" (click)="selectPrevInterval()" [disabled]="selectedInterval === 0">
       ← Previous
     </button>
-    <span class="current-interval">Interval {{ selectedInterval }} of {{ maxInterval }}</span>
-    <button class="nav-btn" (click)="selectNextInterval()" [disabled]="selectedInterval === maxInterval">
+    <span class="current-interval">Interval {{ selectedInterval }} of {{ maxInterval - 1 }}</span>
+    <button class="nav-btn" (click)="selectNextInterval()" [disabled]="selectedInterval >= maxInterval - 1">
       Next →
     </button>
   </div>

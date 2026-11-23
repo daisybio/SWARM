@@ -6,6 +6,7 @@ describe('padj-transform', () => {
     expect(isPadjColumn('tf_activity_padj_ulm')).toBeTrue();
     expect(isPadjColumn('cell_comp_tf_activity_padj_ulm')).toBeTrue();
     expect(isPadjColumn('moranI_padj')).toBeTrue();
+    expect(isPadjColumn('ligand_receptor_p_value')).toBeTrue();
     expect(isPadjColumn('tf_activity_score_ulm')).toBeFalse();
     expect(isPadjColumn(null)).toBeFalse();
   });

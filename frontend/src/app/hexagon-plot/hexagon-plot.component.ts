@@ -39,7 +39,7 @@ import { CellFeature } from '../hexagon-view/cell-feature.types';
 import { SpotShape } from '../hexagon-view/spot-geometry';
 import { isSpatialOrIdentifierKey, isUninformativeAttribute } from '../attribute-filters';
 import { categoricalScale, ensurePaletteCovers, LEIDEN_CLUSTER_PALETTE } from '../categorical-palette';
-import { PADJ_LEGEND_LABEL, PADJ_NEGLOG_CLIP, isPadjColumn, padjToNegLog10 } from '../padj-transform';
+import { PADJ_NEGLOG_CLIP, isPadjColumn, padjToNegLog10, pValueLegendLabel } from '../padj-transform';
 
 // Material
 import { MatButtonModule } from '@angular/material/button';
@@ -2998,14 +2998,18 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     compare ? this.isLoadingGenie3Compare = true : this.isLoadingGenie3 = true;
     d3.select(graphContainerId).html('');
 
-    if (!geneSet || compare ? !this.genie3NetworkCompare : !this.genie3Network || compare ? this.genie3NetworkCompare.length === 0 : this.genie3Network.length === 0) {
+    // Parenthesised: the unparenthesised `a || compare ? x : y || compare ? z : w` chain this replaces
+    // parsed as (a || compare) ? x : (y || compare) ? z : w, so the guard tested the wrong things.
+    const genie3Net = compare ? this.genie3NetworkCompare : this.genie3Network;
+    if (!geneSet || !genie3Net || genie3Net.length === 0) {
       compare ? this.isLoadingGenie3Compare = false : this.isLoadingGenie3 = false;
       this.checkInitializationComplete(compare);
       return;
     }
 
     let regulator = geneSet ?? '';
-    let targets = this.geneSetsGenie3[regulator] || [];
+    // The compare side has its own gene sets (it may be a different dataset).
+    let targets = (compare ? this.geneSetsGenie3Compare : this.geneSetsGenie3)[regulator] || [];
 
     let nodes: { id: string; x?: number; y?: number; group: number }[] = [];
     let edges: { source: string; target: string; weight: number }[] = [];
@@ -3384,14 +3388,15 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     compare ? this.isLoadingSpongeCompare = true : this.isLoadingSponge = true;
     d3.select(graphContainerId).html('');
 
-    if (!geneSet || !datasetId || compare ? !this.spongeNetworkCompare || this.spongeNetworkCompare.length === 0 : !this.spongeNetwork || this.spongeNetwork.length === 0) {
+    const spongeNet = compare ? this.spongeNetworkCompare : this.spongeNetwork;
+    if (!geneSet || !datasetId || !spongeNet || spongeNet.length === 0) {
       compare ? this.isLoadingSpongeCompare = false : this.isLoadingSponge = false;
       this.checkInitializationComplete(compare);
       return;
     }
 
     let regulator = geneSet ?? '';
-    let targets = this.geneSetsSponge[regulator] || [];
+    let targets = (compare ? this.geneSetsSpongeCompare : this.geneSetsSponge)[regulator] || [];
 
 
     let nodes: { id: string; x?: number; y?: number; group: number }[] = [];
@@ -4727,7 +4732,10 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     const titleText = this.translationService.translateSync(viewVariablesToUpdate.view);
     let legendTitle = titleText && String(titleText).trim() ? titleText : this.label(viewVariablesToUpdate.view);
     const padjLegend = this.isPadjView(!viewVariablesToUpdate.isMainView, viewVariablesToUpdate.view);
-    if (padjLegend) legendTitle = `${legendTitle} ${PADJ_LEGEND_LABEL}`;
+    if (padjLegend) {
+      const col = (viewVariablesToUpdate.isMainView ? this.loadedColumnByView : this.loadedColumnByViewCompare)[viewVariablesToUpdate.view];
+      legendTitle = `${legendTitle} ${pValueLegendLabel(col)}`;
+    }
 
     let legendInfo: MapLegendInfo | null = null;
 

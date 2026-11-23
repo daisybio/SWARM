@@ -46,7 +46,7 @@ export class CoOccurrencePanelComponent {
   @Input() clusterCount = 10;
   /** 75th-percentile value (computed by the parent) above which a cell is highlighted. */
   @Input() threshold = 0.5;
-  /** Highest valid interval index for this dataset. */
+  /** Number of distance intervals (= boundaries - 1): valid interval indices are 0..maxInterval-1. */
   @Input() maxInterval = 49;
   @Input() selectedInterval = 0;
   /** Cleaned (numeric, finite) interval boundary values for this dataset, if any. */
@@ -70,7 +70,7 @@ export class CoOccurrencePanelComponent {
   @Output() clusterSelected = new EventEmitter<number>();
 
   get intervalOptions(): number[] {
-    return Array.from({ length: this.maxInterval + 1 }, (_, i) => i);
+    return Array.from({ length: this.maxInterval }, (_, i) => i);
   }
 
   get clusterIndices(): number[] {
@@ -84,7 +84,7 @@ export class CoOccurrencePanelComponent {
   }
 
   selectNextInterval(): void {
-    if (this.selectedInterval < this.maxInterval) {
+    if (this.selectedInterval < this.maxInterval - 1) {
       this.intervalChanged.emit(this.selectedInterval + 1);
     }
   }
@@ -111,21 +111,23 @@ export class CoOccurrencePanelComponent {
     return this.continuousColorScale(intensity);
   }
 
+  /**
+   * Radius covered by interval `index`. Squidpy's co-occurrence is cumulative: occ[..., i] is the
+   * probability of finding the other cluster within distance interval[i + 1] of a cell, so the range
+   * is 0 up to the NEXT boundary (boundaries has one more entry than there are intervals).
+   */
   getActualIntervalRange(index: number): { start: number; end: number } | null {
-    const intervals = this.intervalBoundaries;
-    if (!intervals.length || index < 0 || index >= intervals.length) return null;
-
-    return {
-      start: index === 0 ? 0 : intervals[index - 1],
-      end: intervals[index],
-    };
+    const bounds = this.intervalBoundaries;
+    const end = Number(bounds[index + 1]);
+    if (!bounds.length || index < 0 || !Number.isFinite(end)) return null;
+    return { start: 0, end };
   }
 
   formatActualIntervalRange(index: number, digits = 1): string {
     const range = this.getActualIntervalRange(index);
     if (!range) return '';
 
-    return `(${range.start.toFixed(digits)}–${range.end.toFixed(digits)})`;
+    return `(0–${range.end.toFixed(digits)})`;
   }
 
   tooltipFor(targetCluster: number, value: number): string {
