@@ -136,6 +136,42 @@ body {
   }
 }
 
+/* Spot-shape selector under the map: compact segmented control, same height/rhythm as the
+   neighbouring toolbar buttons (30px, 0.5rem margin, 8px radius). */
+.spot-shape-toggle.mat-button-toggle-group {
+  --mat-standard-button-toggle-height: 30px;
+  --mat-standard-button-toggle-shape: 8px;
+  --mat-standard-button-toggle-text-color: var(--swarm-text);
+  --mat-standard-button-toggle-background-color: var(--swarm-bg-card);
+  --mat-standard-button-toggle-divider-color: var(--swarm-border);
+  margin: 0.5rem;
+  align-self: center;
+  border-color: var(--swarm-border);
+  box-shadow: 0 4px 10px rgba(11, 116, 193, 0.12);
+
+  .mat-button-toggle-label-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 12px;
+    line-height: 30px;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .mat-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    line-height: 16px;
+    margin: 0;
+  }
+
+  .mat-button-toggle:not(.mat-button-toggle-checked):not(.mat-button-toggle-disabled):hover {
+    background-color: var(--swarm-bg-hover);
+  }
+}
+
 /* Icons - orange for primary, yellow only for icons/svgs */
 .mat-primary {
   color: var(--swarm-primary) !important;

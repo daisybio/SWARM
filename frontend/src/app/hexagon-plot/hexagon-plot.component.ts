@@ -38,7 +38,7 @@ import { LiveCorrelationDrawerComponent } from '../live-correlation-drawer/live-
 import { CellFeature } from '../hexagon-view/cell-feature.types';
 import { SpotShape } from '../hexagon-view/spot-geometry';
 import { isSpatialOrIdentifierKey, isUninformativeAttribute } from '../attribute-filters';
-import { categoricalScale, ensurePaletteCovers, LEIDEN_CLUSTER_PALETTE } from '../categorical-palette';
+import { categoricalScale, ensurePaletteCovers, extendedPalette, globalCategoryColors, LEIDEN_CLUSTER_PALETTE } from '../categorical-palette';
 import { PADJ_NEGLOG_CLIP, isPadjColumn, padjToNegLog10, pValueLegendLabel } from '../padj-transform';
 
 // Material
@@ -61,6 +61,10 @@ import { MatTabChangeEvent, MatTabGroup, MatTab } from '@angular/material/tabs';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { MatInputModule } from '@angular/material/input';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+
+const EMPTY_DGEA_LEVELS: string[] = [];
+const EMPTY_DGEA_COMPARISONS: { [key: string]: any } = {};
+const EMPTY_TABLE_DATA: TableData = {};
 
 export { LEIDEN_CLUSTER_PALETTE };
 
@@ -1481,18 +1485,38 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     return cmp['heatmap_context'] ?? null;
   }
 
-  // Returns all available cell type levels for the dropdown selectors
+  /**
+   * Memoizes a getter that is bound to a child @Input() in the template. Such a getter runs on every
+   * change-detection pass; returning a new array/object each time makes Angular see a changed input
+   * on every pass, re-running the child's ngOnChanges (-> microtask loops, rebuilt tables, reset
+   * paging/filters). Recomputes only when one of `deps` changed (by identity).
+   */
+  private readonly memoCache = new Map<string, { deps: readonly unknown[]; value: unknown }>();
+  private memo<T>(key: string, deps: readonly unknown[], compute: () => T): T {
+    const hit = this.memoCache.get(key);
+    if (hit && hit.deps.length === deps.length && hit.deps.every((d, i) => d === deps[i])) {
+      return hit.value as T;
+    }
+    const value = compute();
+    this.memoCache.set(key, { deps, value });
+    return value;
+  }
+
+  // Returns all available cell type levels for the dropdown selectors.
+  // Must return a STABLE empty array: a new [] per call changes the [levels] input of <app-dgea-panel>
+  // on every change-detection pass, whose ngOnChanges then queues a microtask -> endless tick loop
+  // that freezes the page (XHR callbacks never run) while no dataset is loaded.
   getDgeaLevels(compare: boolean = false): string[] {
     const meta = compare ? this.metaCompare : this.meta;
     const obsCol = compare ? this.selectedDgeaObsColCompare : this.selectedDgeaObsCol;
-    return meta?.['dgea']?.[obsCol]?.['levels'] ?? [];
+    return meta?.['dgea']?.[obsCol]?.['levels'] ?? EMPTY_DGEA_LEVELS;
   }
 
   // Returns the map of all DGEA comparisons
   getDgeaComparisonMap(compare: boolean = false): { [key: string]: any } {
     const meta = compare ? this.metaCompare : this.meta;
     const obsCol = compare ? this.selectedDgeaObsColCompare : this.selectedDgeaObsCol;
-    return meta?.['dgea']?.[obsCol]?.['comparisons'] ?? {};
+    return meta?.['dgea']?.[obsCol]?.['comparisons'] ?? EMPTY_DGEA_COMPARISONS;
   }
 
   // Re-render the DGEA heatmap when the user changes the group selections
@@ -1502,7 +1526,8 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
   getDgeaObsCols(compare: boolean = false): string[] {
     const meta = compare ? this.metaCompare : this.meta;
-    return Object.keys(meta?.['dgea'] ?? {});
+    const dgea = meta?.['dgea'];
+    return this.memo(`dgeaObsCols:${compare}`, [dgea], () => Object.keys(dgea ?? {}));
   }
 
   public onDgeaObsColChange(compare: boolean = false): void {
@@ -2170,9 +2195,10 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     this.updateHexColors(compare ? '#hexbin-compare' : '#hexbin');
   }
 
-  /** "Same scale" toggle in compare mode (see compareSameScale). */
-  public toggleSpotShape(): void {
-    this.spotShape = this.spotShape === 'hexagon' ? 'circle' : 'hexagon';
+  /** Spot shape selector (Circles | Hexagons toggle group). */
+  public setSpotShape(shape: SpotShape): void {
+    if (shape === this.spotShape) return;
+    this.spotShape = shape;
     try {
       localStorage.setItem('swarm.spotShape', this.spotShape);
     } catch {
@@ -2182,6 +2208,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     this.rerenderMapGeometry(true);
   }
 
+  /** "Same scale" toggle in compare mode (see compareSameScale). */
   public toggleCompareSameScale(): void {
     this.compareSameScale = !this.compareSameScale;
     this.rerenderMapGeometry(false);
@@ -2823,7 +2850,18 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
       const ordinal = viewVariablesToUpdate.ordinal;
       // Never wrap around: grow the palette if this property has more categories than colors.
-      ensurePaletteCovers(ordinal, viewToUse === 'leiden' ? LEIDEN_CLUSTER_PALETTE : d3.schemeSet2, domain.length);
+      const basePalette = viewToUse === 'leiden' ? LEIDEN_CLUSTER_PALETTE : d3.schemeSet2;
+      ensurePaletteCovers(ordinal, basePalette, domain.length);
+      // Colormap stored in the AnnData (uns["<column>_colors"], passed on as meta.category_colors):
+      // categories it names keep those colors, the rest get generated non-repeating ones.
+      const own = ((isMainView ? this.meta : this.metaCompare) as any)?.['category_colors']?.[viewToUse] as
+        Record<string, string> | undefined;
+      // Leiden cluster ids keep their index-based palette; every other label gets a color that
+      // depends only on the label, so e.g. "Hypoxia" has the same color in all columns/datasets.
+      const generated = viewToUse === 'leiden'
+        ? extendedPalette(basePalette, Math.max(256, domain.length))
+        : globalCategoryColors(domain, basePalette);
+      ordinal.range(domain.map((c, i) => own?.[c] ?? generated[i]));
       ordinal.domain(domain);
       viewVariablesToUpdate.setLegendDomain(domain);
       viewVariablesToUpdate.setLegendType('categorical');
@@ -4338,9 +4376,10 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
   public getIntervalBoundaries(compare: boolean = false): number[] {
     const raw = compare ? this.metaCompare?.['interval'] : this.meta?.['interval'];
-    return Array.isArray(raw)
-      ? raw.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v))
-      : [];
+    return this.memo(`intervalBoundaries:${compare}`, [raw], () =>
+      Array.isArray(raw)
+        ? raw.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v))
+        : []);
   }
 
   async getRegulatoryScoresforSpots(barcode: string, datasetId?: string, compare: boolean = false) {
@@ -4582,10 +4621,10 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
   public getRegulatoryActionColumns(networkType: 'genie3' | 'sponge', compare: boolean): string[] {
     const meta = compare ? this.metaCompare : this.meta;
     const scoreNames = meta?.['grn_score_names'];
-    if (!Array.isArray(scoreNames)) {
-      return [];
-    }
-    return scoreNames.filter((name: string) => name.endsWith(`_${networkType}`));
+    return this.memo(`regActionCols:${networkType}:${compare}`, [scoreNames], () =>
+      Array.isArray(scoreNames)
+        ? scoreNames.filter((name: string) => name.endsWith(`_${networkType}`))
+        : []);
   }
 
   public getRegulatoryTableData(networkType: 'genie3' | 'sponge', compare: boolean): TableData {
@@ -4600,7 +4639,7 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
 
     const table = meta?.[key];
     if (!table || typeof table !== 'object') {
-      return {};
+      return EMPTY_TABLE_DATA;
     }
     return table as TableData;
   }
@@ -5763,7 +5802,13 @@ export class HexagonPlotComponent implements OnInit, OnDestroy, AfterViewInit {
     return gene ? this.geneSymbolService.label(gene) : '';
   }
 
+  /** Bound to an @Input() of the correlation drawer: same id/name -> the same object (see memo()). */
   public getActiveFeatureId(isCompare: boolean): { id: string; name: string } {
+    const feature = this.computeActiveFeatureId(isCompare);
+    return this.memo(`activeFeature:${isCompare}`, [feature.id, feature.name], () => feature);
+  }
+
+  private computeActiveFeatureId(isCompare: boolean): { id: string; name: string } {
     const lastFeat = isCompare ? this.lastActiveFeatureCompare : this.lastActiveFeatureMain;
     if (lastFeat && lastFeat.id) {
       return lastFeat;

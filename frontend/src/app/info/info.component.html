@@ -60,7 +60,7 @@
       <div class="inventory-section">
         <h3>Analyses</h3>
         <ul class="status-list">
-          <li *ngFor="let analysis of getAnalyses()" class="status-row"
+          <li *ngFor="let analysis of getAnalyses(); trackBy: trackByIndex" class="status-row"
             [class.is-present]="analysis.enabled" [class.is-absent]="!analysis.enabled">
             <mat-icon class="status-icon">{{ analysis.enabled ? 'check_circle' : 'remove_circle_outline' }}</mat-icon>
             <span class="status-name">
@@ -73,7 +73,7 @@
         </ul>
       </div>
 
-      <div class="inventory-section" *ngFor="let group of getFileGroups()">
+      <div class="inventory-section" *ngFor="let group of getFileGroups(); trackBy: trackByIndex">
         <h3>{{ group.group }}</h3>
         <ul class="status-list">
           <li *ngFor="let file of group.files" class="status-row"
@@ -93,7 +93,7 @@
         </ul>
       </div>
 
-      <div class="inventory-section inventory-spec" *ngFor="let group of getAnnDataSpec()">
+      <div class="inventory-section inventory-spec" *ngFor="let group of getAnnDataSpec(); trackBy: trackByIndex">
         <h3>AnnData &mdash; {{ group.group }}</h3>
         <ul class="status-list">
           <li *ngFor="let entry of group.entries" class="status-row is-spec">
@@ -107,7 +107,7 @@
         </ul>
       </div>
 
-      <div class="inventory-section inventory-spec" *ngFor="let group of getGeoJsonSpec()">
+      <div class="inventory-section inventory-spec" *ngFor="let group of getGeoJsonSpec(); trackBy: trackByIndex">
         <h3>GeoJSON &mdash; {{ group.group }}</h3>
         <ul class="status-list">
           <li *ngFor="let entry of group.entries" class="status-row"
@@ -131,7 +131,7 @@
       <div class="inventory-section">
         <h3>Differential motif activity results</h3>
         <ul class="status-list" *ngIf="getDifferentialMotifActivityFiles().length > 0; else noDiffMotif">
-          <li *ngFor="let file of getDifferentialMotifActivityFiles()" class="status-row is-present">
+          <li *ngFor="let file of getDifferentialMotifActivityFiles(); trackBy: trackByIndex" class="status-row is-present">
             <mat-icon class="status-icon">check_circle</mat-icon>
             <span class="status-name">{{ file.comparison }}</span>
             <a class="link-btn" [href]="getDownloadLink(file.path)" target="_blank" rel="noopener">Download</a>
@@ -145,7 +145,7 @@
       <div class="inventory-section">
         <h3>Footprint profiles</h3>
         <ul class="status-list" *ngIf="getFootprintPDFs().length > 0; else noFootprints">
-          <li *ngFor="let file of getFootprintPDFs()" class="status-row is-present">
+          <li *ngFor="let file of getFootprintPDFs(); trackBy: trackByIndex" class="status-row is-present">
             <mat-icon class="status-icon">check_circle</mat-icon>
             <span class="status-name">{{ file.motifId }}</span>
             <a class="link-btn" [href]="getDownloadLink(file.path)" target="_blank" rel="noopener">Download</a>

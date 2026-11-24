@@ -695,6 +695,25 @@ if __name__ == "__main__":
             spatial_data.uns["leiden_cluster_names"]
         )
 
+    # Colormaps stored in the AnnData (scanpy convention: uns["<obs column>_colors"], one color per
+    # category in the order of obs[col].cat.categories): pass them on so the frontend uses them
+    # instead of generating its own palette.
+    category_colors = {}
+    for key in list(spatial_data.uns.keys()):
+        if not str(key).endswith("_colors"):
+            continue
+        col = str(key)[: -len("_colors")]
+        if col not in spatial_data.obs.columns or not isinstance(
+            spatial_data.obs[col].dtype, pd.CategoricalDtype
+        ):
+            continue
+        cats = [str(c) for c in spatial_data.obs[col].cat.categories]
+        colors = [str(c) for c in list(spatial_data.uns[key])]
+        if len(colors) >= len(cats) and all(c.startswith("#") for c in colors[: len(cats)]):
+            category_colors[col] = dict(zip(cats, colors))
+    if category_colors:
+        meta_dict["category_colors"] = category_colors
+
     meta_dict["data_type"] = args.data_type
     # Add differential motif activity top-motif tables
     if "diff_motif_activity_top_motifs" in spatial_data.uns:

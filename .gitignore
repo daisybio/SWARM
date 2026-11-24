@@ -166,3 +166,6 @@ backend/calc_multiome_scores/calc_multiome_scores_test.ipynb
 *.backup
 /wget-log
 /new_idea.html
+
+# local dev launcher settings
+.launch.local

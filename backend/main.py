@@ -394,6 +394,10 @@ cookie = SessionCookie(
     secret_key=SESSION_SECRET_KEY,
     cookie_params=cookie_params,
 )
+# fastapi_sessions keeps SameSite as a str-Enum and Starlette formats it with f"{value}", which on
+# Python >= 3.11 gives "SameSiteEnum.lax" (invalid -> browsers ignore the attribute). Store the plain
+# string so the header reads "SameSite=lax".
+cookie.cookie_params.samesite = cookie_params.samesite.value  # type: ignore[assignment]
 backend = InMemoryBackend[UUID, SessionData]()
 
 
@@ -3595,7 +3599,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app" if reload else app,
         host="0.0.0.0",
-        port=3000,
+        port=int(os.getenv("SWARM_PORT", "3000")),
         reload=reload,
         reload_dirs=[str(Path(__file__).resolve().parent)] if reload else None,
     )

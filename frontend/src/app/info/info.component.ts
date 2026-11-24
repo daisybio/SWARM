@@ -116,6 +116,11 @@ export class InfoComponent implements OnDestroy {
     this.hideUnavailable = !this.hideUnavailable;
   }
 
+  /** Getters below build fresh objects every call; track by position so ngFor reuses the DOM nodes. */
+  trackByIndex(index: number): number {
+    return index;
+  }
+
   /**
    * Every analysis stage the pipeline can record on a dataset, each reported as explicitly
    * enabled or disabled. This is a fixed catalog rather than a list of what happens to be

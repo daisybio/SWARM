@@ -361,3 +361,39 @@ export function ensurePaletteCovers(
     scale.range(extendedPalette(base, categoryCount));
   }
 }
+
+/**
+ * Colors for a set of category labels that are the same for the same label everywhere (any
+ * column, any dataset, any session): the label (trimmed, case-insensitive) is hashed to a slot in
+ * the first GLOBAL_SLOTS colors of the extended palette, so "Hypoxia" always starts at the same
+ * color. Within one set, a color that is already taken is skipped to the next free one, so
+ * colors still never repeat; only on such a collision a label deviates from its usual color.
+ * Labels are processed in sorted order, so the result does not depend on the input order.
+ */
+const GLOBAL_SLOTS = 64;
+const GLOBAL_POOL = 256;
+
+function hashLabel(label: string): number {
+  let h = 0x811c9dc5;
+  const s = label.trim().toLowerCase();
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+export function globalCategoryColors(labels: readonly string[], base: readonly string[]): string[] {
+  const pool = extendedPalette(base, GLOBAL_POOL);
+  const taken = new Set<number>();
+  const assigned = new Map<string, string>();
+  [...new Set(labels)].sort().forEach((label) => {
+    let slot = hashLabel(label) % GLOBAL_SLOTS;
+    for (let k = 0; k < pool.length && taken.has(slot); k++) {
+      slot = (slot + 1) % pool.length;
+    }
+    taken.add(slot);
+    assigned.set(label, pool[slot]);
+  });
+  return labels.map((l) => assigned.get(l) ?? '#888888');
+}
